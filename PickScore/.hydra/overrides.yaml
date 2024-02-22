@@ -1,0 +1,3 @@
+- dataset=my_dataset
+- +experiment=clip_h
+- output_dir=test_output

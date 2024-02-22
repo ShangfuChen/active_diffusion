@@ -28,7 +28,7 @@ class ProcessorConfig:
 class MyHFDatasetConfig(BaseDatasetConfig):
     _target_: str = "trainer.datasetss.my_hf_dataset.MyHFDataset"
     dataset_name: str = "my_dataset"
-    dataset_loc: str = "/home/hayano/rl4dgm/rl4dgm/my_dataset/my_dataset"
+    dataset_loc: str = "../rl4dgm/rl4dgm/my_dataset/my_dataset"
     dataset_config_name: str = "null"
 
     from_disk: bool = False

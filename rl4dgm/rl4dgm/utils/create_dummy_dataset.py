@@ -12,7 +12,7 @@ import numpy as np
 import argparse
 from datetime import datetime
 
-from rl4dgm.utils.query_generator import generate_queries
+from rl4dgm.rl4dgm.utils.query_generator import generate_queries
 
 NUM_ITERS_TO_RUN = 3
 NUM_INFERENCE_STEPS = 10
@@ -101,9 +101,12 @@ def generate_images(
     n_images,
     n_inference_steps=10,
     img_dim=(256,256),
+    seed=None,
 ):
     model = DiffusionPipeline.from_pretrained("SimianLuo/LCM_Dreamshaper_v7").to(device)
-    generator = torch.manual_seed(2023)
+    if seed is None:
+        seed = torch.random.seed()
+    generator = torch.manual_seed(seed)
 
     # create image save folder
     os.makedirs(img_save_dir, exist_ok=False)
@@ -183,7 +186,7 @@ def add_to_pickapic_dataframe(preference_df, prompt, labels, image_paths):
     return preference_df
 
 
-def generate_dummy_icecream_dataset(data_save_dir, n_images, n_queries, datafile_name="dummy_icecream.parquet"):
+def generate_dummy_icecream_dataset(data_save_dir, n_images, n_queries, datafile_name="dummy_icecream.parquet", seed=None):
     
     #### Generate Images ####
     prompts = [
@@ -195,9 +198,9 @@ def generate_dummy_icecream_dataset(data_save_dir, n_images, n_queries, datafile
 
     img_dirs = []
     for prompt in prompts:
-        img_save_dir = os.path.join(data_save_dir, prompt.replace(" ", "_"))
+        img_save_dir = os.path.join(data_save_dir, "image_data", prompt.replace(" ", "_"))
         img_dirs.append(img_save_dir)
-        generate_images(img_save_dir=img_save_dir, prompt=prompt, n_images=25)
+        generate_images(img_save_dir=img_save_dir, prompt=prompt, n_images=25, seed=seed)
 
     #### Generate Preference Data ####
     # initialize dataframe
@@ -306,7 +309,7 @@ def preference_from_keyphrases(keyphrases, img_paths, **kwargs):
     label1 = 0.5
     return label0, label1
 
-def generate_dummy_cat_dataset(data_save_dir, n_images, n_queries, datafile_name="dummy_cat.parquet"):
+def generate_dummy_cat_dataset(data_save_dir, n_images, n_queries, datafile_name="dummy_cat.parquet", seed=None):
 
     #### Generate Images ####
     prompts = [
@@ -316,10 +319,12 @@ def generate_dummy_cat_dataset(data_save_dir, n_images, n_queries, datafile_name
         "A demonic white cat with sharp eyes",
     ]
 
+    img_dirs = []
     for prompt in prompts:
-        img_save_dir = os.path.join(data_save_dir, prompt.replace(" ", "_"))
-        generate_images(img_save_dir=img_save_dir, prompt=prompt, n_images=n_images)
-
+        img_save_dir = os.path.join(data_save_dir, "image_data", prompt.replace(" ", "_"))
+        img_dirs.append(img_save_dir)
+        generate_images(img_save_dir=img_save_dir, prompt=prompt, n_images=n_images, seed=seed)
+    
     #### Generate Preference Data ####
     # initialize dataframe
     preference_df = create_pickapic_dataframe()
@@ -463,5 +468,6 @@ if __name__ == "__main__":
     parser.add_argument("--n-queries", type=int, default=100)
     parser.add_argument("--type", type=str, help=f"Which type of dummy dataset to generate")
     parser.add_argument("--parquet-filename", type=str, default="dummy_dataset.parquet")
+    parser.add_argument("--seed", type=int)
     args = parser.parse_args()
     main(args)

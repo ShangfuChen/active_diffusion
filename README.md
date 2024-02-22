@@ -5,11 +5,22 @@ If LoRA is enabled, requires less than 10GB of GPU memory to finetune Stable Dif
 
 ## Installation
 ### DDPO
-Requires Python 3.10 or newer.
+Requires Python 3.10
 ```bash
 cd ddpo
 pip install -e .
 ```
+### rl4dgm
+```bash
+cd rl4dgm/rl4dgm
+pip install -e .
+```
+### Pickscore
+```bash
+cd Pickscore
+pip install -e .
+```
+
 
 ## Usage
 ```bash

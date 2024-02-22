@@ -21,11 +21,11 @@ from trainer.configs.configs import TrainerConfig, instantiate_with_cfg
 
 from diffusers import DiffusionPipeline
 
-from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
-import rl4dgm.utils.generate_images as image_generator
-import rl4dgm.utils.query_generator as query_generator
+from rl4dgm.rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
+import rl4dgm.rl4dgm.utils.generate_images as image_generator
+import rl4dgm.rl4dgm.utils.query_generator as query_generator
 
-from rl4dgm.utils.create_dummy_dataset import preference_from_ranked_prompts, preference_from_keyphrases
+from rl4dgm.rl4dgm.utils.create_dummy_dataset import preference_from_ranked_prompts, preference_from_keyphrases
 
 logger = get_logger(__name__)
 
@@ -241,8 +241,8 @@ def main(cfg: TrainerConfig) -> None:
 
         # TODO - Below is temporary hack. Fix it to make dataset location point to the newly saved dataset
         # NOTE - dataloader.dataset.cfg contains dataset_loc
-        feedback_interface.save_dataset(dataset_save_path="/home/hayano/rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")
-        print("Overwrote dataset at /home/hayano/rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")        
+        feedback_interface.save_dataset(dataset_save_path="../rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")
+        print("Overwrote dataset at ../rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")        
         
         # Re-initialize dataloaders from newly collected dataset
         trainloader = reinitialize_trainloader(cfg.dataset)

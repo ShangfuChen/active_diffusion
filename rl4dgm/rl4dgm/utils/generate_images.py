@@ -4,6 +4,7 @@ import os
 import csv
 import numpy as np
 import random
+import shutil
 
 import torch 
 from diffusers import DiffusionPipeline
@@ -18,6 +19,9 @@ def generate_images(
     img_dim=(256,256),
 ):
     # create image save folder
+    if os.path.exists(img_save_dir):
+        # remove directory if it already exists
+        shutil.rmtree(img_save_dir)
     os.makedirs(img_save_dir, exist_ok=False)
 
     n_imgs_saved = 0

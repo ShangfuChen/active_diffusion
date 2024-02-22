@@ -1,0 +1,253 @@
+[2024-02-22 18:28:25,910][accelerate.utils.other][WARNING] - Detected kernel version 4.18.0, which is below the recommended minimum of 5.5.0; this can cause the process to hang. It is recommended to upgrade the kernel to the minimum version or higher.
+[2024-02-22 18:28:25,911][trainer.accelerators.base_accelerator][INFO] - Setting seed 42
+[2024-02-22 18:28:25,913][trainer.accelerators.base_accelerator][INFO] - Initialized accelerator: rank=0
+[2024-02-22 18:28:25,913][__main__][INFO] - Config can be found in test_output/config.yaml
+[2024-02-22 18:28:25,914][__main__][INFO] - Loading task
+[2024-02-22 18:28:29,651][__main__][INFO] - Loading model
+[2024-02-22 18:28:45,474][__main__][INFO] - Loading criterion
+[2024-02-22 18:28:45,475][__main__][INFO] - Loading optimizer
+[2024-02-22 18:28:45,478][__main__][INFO] - Loading lr scheduler
+[2024-02-22 18:28:45,480][__main__][INFO] - Loading dataloaders
+[2024-02-22 18:28:45,480][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:28:21,169][accelerate.utils.other][WARNING] - Detected kernel version 4.18.0, which is below the recommended minimum of 5.5.0; this can cause the process to hang. It is recommended to upgrade the kernel to the minimum version or higher.
+[2024-02-22 20:28:21,171][trainer.accelerators.base_accelerator][INFO] - Setting seed 42
+[2024-02-22 20:28:21,171][trainer.accelerators.base_accelerator][INFO] - Initialized accelerator: rank=0
+[2024-02-22 20:28:21,172][__main__][INFO] - Config can be found in test_output/config.yaml
+[2024-02-22 20:28:21,172][__main__][INFO] - Loading task
+[2024-02-22 20:28:21,473][__main__][INFO] - Loading model
+[2024-02-22 20:28:23,235][__main__][INFO] - Loading criterion
+[2024-02-22 20:28:23,235][__main__][INFO] - Loading optimizer
+[2024-02-22 20:28:23,239][__main__][INFO] - Loading lr scheduler
+[2024-02-22 20:28:23,240][__main__][INFO] - Loading dataloaders
+[2024-02-22 20:28:23,240][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:28:24,152][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:28:24,152][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:28:25,965][trainer.datasetss.my_hf_dataset][INFO] - Loading validation dataset
+[2024-02-22 20:28:26,835][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from validation dataset
+[2024-02-22 20:28:26,836][trainer.datasetss.my_hf_dataset][INFO] - Keeping only examples with label in validation split
+[2024-02-22 20:28:26,913][trainer.datasetss.my_hf_dataset][INFO] - Kept 100 examples from validation dataset
+[2024-02-22 20:28:26,913][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from validation dataset
+[2024-02-22 20:28:28,157][trainer.datasetss.my_hf_dataset][INFO] - Loading test dataset
+[2024-02-22 20:28:29,054][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from test dataset
+[2024-02-22 20:28:29,054][trainer.datasetss.my_hf_dataset][INFO] - Keeping only examples with label in test split
+[2024-02-22 20:28:29,089][trainer.datasetss.my_hf_dataset][INFO] - Kept 100 examples from test dataset
+[2024-02-22 20:28:29,089][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from test dataset
+[2024-02-22 20:28:30,301][accelerate.accelerator][INFO] - Since you passed both train and evaluation dataloader, `is_train_batch_min` (here True will decide the `train_batch_size` (16).
+[2024-02-22 20:28:33,473][trainer.accelerators.base_accelerator][INFO] - No checkpoint found, training from scratch
+[2024-02-22 20:28:33,511][trainer.accelerators.base_accelerator][INFO] - Initializing trackers
+[2024-02-22 20:28:36,685][trainer.accelerators.base_accelerator][INFO] - Training config:
+[2024-02-22 20:28:36,809][trainer.accelerators.base_accelerator][INFO] - nvidia-smi stats: {'gpu_0_mem_used_gb': 23.328125, 'gpu_1_mem_used_gb': 0.001953125, 'gpu_2_mem_used_gb': 0.001953125, 'gpu_3_mem_used_gb': 0.001953125, 'gpu_4_mem_used_gb': 0.001953125, 'gpu_5_mem_used_gb': 0.001953125, 'gpu_6_mem_used_gb': 0.001953125, 'gpu_7_mem_used_gb': 0.001953125}
+[2024-02-22 20:28:36,809][trainer.accelerators.base_accelerator][INFO] - ***** Running training *****
+[2024-02-22 20:28:36,809][trainer.accelerators.base_accelerator][INFO] -   Instantaneous batch size per device = 16
+[2024-02-22 20:28:36,809][trainer.accelerators.base_accelerator][INFO] -   Total train batch size (w. parallel, distributed & accumulation) = 16
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   Gradient Accumulation steps = 1
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   Total warmup steps = 500
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   Total training steps = 600
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   Total epochs = 600
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   Steps per epoch = 1
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   Update steps per epoch = 1
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   Total optimization steps = 600
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   Mixed precision = bf16
+[2024-02-22 20:28:36,810][trainer.accelerators.base_accelerator][INFO] -   World size = 1
+[2024-02-22 20:35:07,253][accelerate.utils.other][WARNING] - Detected kernel version 4.18.0, which is below the recommended minimum of 5.5.0; this can cause the process to hang. It is recommended to upgrade the kernel to the minimum version or higher.
+[2024-02-22 20:35:07,254][trainer.accelerators.base_accelerator][INFO] - Setting seed 42
+[2024-02-22 20:35:07,255][trainer.accelerators.base_accelerator][INFO] - Initialized accelerator: rank=0
+[2024-02-22 20:35:07,256][__main__][INFO] - Config can be found in test_output/config.yaml
+[2024-02-22 20:35:07,256][__main__][INFO] - Loading task
+[2024-02-22 20:35:07,586][__main__][INFO] - Loading model
+[2024-02-22 20:35:09,325][__main__][INFO] - Loading criterion
+[2024-02-22 20:35:09,325][__main__][INFO] - Loading optimizer
+[2024-02-22 20:35:09,329][__main__][INFO] - Loading lr scheduler
+[2024-02-22 20:35:09,330][__main__][INFO] - Loading dataloaders
+[2024-02-22 20:35:09,330][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:35:10,218][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:35:10,218][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:35:11,735][trainer.datasetss.my_hf_dataset][INFO] - Loading validation dataset
+[2024-02-22 20:35:12,485][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from validation dataset
+[2024-02-22 20:35:12,486][trainer.datasetss.my_hf_dataset][INFO] - Keeping only examples with label in validation split
+[2024-02-22 20:35:12,531][trainer.datasetss.my_hf_dataset][INFO] - Kept 100 examples from validation dataset
+[2024-02-22 20:35:12,531][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from validation dataset
+[2024-02-22 20:35:14,074][trainer.datasetss.my_hf_dataset][INFO] - Loading test dataset
+[2024-02-22 20:35:14,908][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from test dataset
+[2024-02-22 20:35:14,908][trainer.datasetss.my_hf_dataset][INFO] - Keeping only examples with label in test split
+[2024-02-22 20:35:14,942][trainer.datasetss.my_hf_dataset][INFO] - Kept 100 examples from test dataset
+[2024-02-22 20:35:14,942][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from test dataset
+[2024-02-22 20:35:16,149][accelerate.accelerator][INFO] - Since you passed both train and evaluation dataloader, `is_train_batch_min` (here True will decide the `train_batch_size` (16).
+[2024-02-22 20:35:19,210][trainer.accelerators.base_accelerator][INFO] - No checkpoint found, training from scratch
+[2024-02-22 20:35:19,248][trainer.accelerators.base_accelerator][INFO] - Initializing trackers
+[2024-02-22 20:35:21,920][trainer.accelerators.base_accelerator][INFO] - Training config:
+[2024-02-22 20:35:22,049][trainer.accelerators.base_accelerator][INFO] - nvidia-smi stats: {'gpu_0_mem_used_gb': 23.060546875, 'gpu_1_mem_used_gb': 0.001953125, 'gpu_2_mem_used_gb': 0.001953125, 'gpu_3_mem_used_gb': 0.001953125, 'gpu_4_mem_used_gb': 0.001953125, 'gpu_5_mem_used_gb': 0.001953125, 'gpu_6_mem_used_gb': 0.001953125, 'gpu_7_mem_used_gb': 0.001953125}
+[2024-02-22 20:35:22,049][trainer.accelerators.base_accelerator][INFO] - ***** Running training *****
+[2024-02-22 20:35:22,049][trainer.accelerators.base_accelerator][INFO] -   Instantaneous batch size per device = 16
+[2024-02-22 20:35:22,049][trainer.accelerators.base_accelerator][INFO] -   Total train batch size (w. parallel, distributed & accumulation) = 16
+[2024-02-22 20:35:22,049][trainer.accelerators.base_accelerator][INFO] -   Gradient Accumulation steps = 1
+[2024-02-22 20:35:22,049][trainer.accelerators.base_accelerator][INFO] -   Total warmup steps = 500
+[2024-02-22 20:35:22,050][trainer.accelerators.base_accelerator][INFO] -   Total training steps = 600
+[2024-02-22 20:35:22,050][trainer.accelerators.base_accelerator][INFO] -   Total epochs = 600
+[2024-02-22 20:35:22,050][trainer.accelerators.base_accelerator][INFO] -   Steps per epoch = 1
+[2024-02-22 20:35:22,050][trainer.accelerators.base_accelerator][INFO] -   Update steps per epoch = 1
+[2024-02-22 20:35:22,050][trainer.accelerators.base_accelerator][INFO] -   Total optimization steps = 600
+[2024-02-22 20:35:22,050][trainer.accelerators.base_accelerator][INFO] -   Mixed precision = bf16
+[2024-02-22 20:35:22,050][trainer.accelerators.base_accelerator][INFO] -   World size = 1
+[2024-02-22 20:36:31,364][__main__][INFO] - task: CLIPTask
+[2024-02-22 20:36:31,364][__main__][INFO] - model: DeepSpeedEngine
+[2024-02-22 20:36:31,366][__main__][INFO] - num. model params: 986M
+[2024-02-22 20:36:31,369][__main__][INFO] - num. model trainable params: 986M
+[2024-02-22 20:36:31,369][__main__][INFO] - criterion: CLIPCriterion
+[2024-02-22 20:36:31,369][__main__][INFO] - num. train examples: 10
+[2024-02-22 20:36:31,369][__main__][INFO] - num. valid examples: 100
+[2024-02-22 20:36:31,369][__main__][INFO] - num. test examples: 100
+[2024-02-22 20:38:22,450][accelerate.utils.other][WARNING] - Detected kernel version 4.18.0, which is below the recommended minimum of 5.5.0; this can cause the process to hang. It is recommended to upgrade the kernel to the minimum version or higher.
+[2024-02-22 20:38:22,450][trainer.accelerators.base_accelerator][INFO] - Setting seed 42
+[2024-02-22 20:38:22,450][trainer.accelerators.base_accelerator][INFO] - Initialized accelerator: rank=0
+[2024-02-22 20:38:22,451][__main__][INFO] - Config can be found in test_output/config.yaml
+[2024-02-22 20:38:22,451][__main__][INFO] - Loading task
+[2024-02-22 20:38:22,733][__main__][INFO] - Loading model
+[2024-02-22 20:38:36,936][__main__][INFO] - Loading criterion
+[2024-02-22 20:38:36,937][__main__][INFO] - Loading optimizer
+[2024-02-22 20:38:36,940][__main__][INFO] - Loading lr scheduler
+[2024-02-22 20:38:36,942][__main__][INFO] - Loading dataloaders
+[2024-02-22 20:38:36,942][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:38:37,761][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:38:37,762][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:38:39,346][trainer.datasetss.my_hf_dataset][INFO] - Loading validation dataset
+[2024-02-22 20:38:40,237][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from validation dataset
+[2024-02-22 20:38:40,237][trainer.datasetss.my_hf_dataset][INFO] - Keeping only examples with label in validation split
+[2024-02-22 20:38:40,297][trainer.datasetss.my_hf_dataset][INFO] - Kept 100 examples from validation dataset
+[2024-02-22 20:38:40,297][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from validation dataset
+[2024-02-22 20:38:41,501][trainer.datasetss.my_hf_dataset][INFO] - Loading test dataset
+[2024-02-22 20:38:42,341][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from test dataset
+[2024-02-22 20:38:42,341][trainer.datasetss.my_hf_dataset][INFO] - Keeping only examples with label in test split
+[2024-02-22 20:38:42,375][trainer.datasetss.my_hf_dataset][INFO] - Kept 100 examples from test dataset
+[2024-02-22 20:38:42,375][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from test dataset
+[2024-02-22 20:38:43,576][accelerate.accelerator][INFO] - Since you passed both train and evaluation dataloader, `is_train_batch_min` (here True will decide the `train_batch_size` (16).
+[2024-02-22 20:38:46,668][trainer.accelerators.base_accelerator][INFO] - No checkpoint found, training from scratch
+[2024-02-22 20:38:46,706][trainer.accelerators.base_accelerator][INFO] - Initializing trackers
+[2024-02-22 20:38:49,285][trainer.accelerators.base_accelerator][INFO] - Training config:
+[2024-02-22 20:38:49,409][trainer.accelerators.base_accelerator][INFO] - nvidia-smi stats: {'gpu_0_mem_used_gb': 23.060546875, 'gpu_1_mem_used_gb': 0.001953125, 'gpu_2_mem_used_gb': 0.001953125, 'gpu_3_mem_used_gb': 0.001953125, 'gpu_4_mem_used_gb': 0.001953125, 'gpu_5_mem_used_gb': 0.001953125, 'gpu_6_mem_used_gb': 0.001953125, 'gpu_7_mem_used_gb': 0.001953125}
+[2024-02-22 20:38:49,409][trainer.accelerators.base_accelerator][INFO] - ***** Running training *****
+[2024-02-22 20:38:49,409][trainer.accelerators.base_accelerator][INFO] -   Instantaneous batch size per device = 16
+[2024-02-22 20:38:49,409][trainer.accelerators.base_accelerator][INFO] -   Total train batch size (w. parallel, distributed & accumulation) = 16
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   Gradient Accumulation steps = 1
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   Total warmup steps = 500
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   Total training steps = 600
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   Total epochs = 600
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   Steps per epoch = 1
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   Update steps per epoch = 1
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   Total optimization steps = 600
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   Mixed precision = bf16
+[2024-02-22 20:38:49,410][trainer.accelerators.base_accelerator][INFO] -   World size = 1
+[2024-02-22 20:38:57,079][__main__][INFO] - task: CLIPTask
+[2024-02-22 20:38:57,079][__main__][INFO] - model: DeepSpeedEngine
+[2024-02-22 20:38:57,081][__main__][INFO] - num. model params: 986M
+[2024-02-22 20:38:57,083][__main__][INFO] - num. model trainable params: 986M
+[2024-02-22 20:38:57,083][__main__][INFO] - criterion: CLIPCriterion
+[2024-02-22 20:38:57,084][__main__][INFO] - num. train examples: 10
+[2024-02-22 20:38:57,084][__main__][INFO] - num. valid examples: 100
+[2024-02-22 20:38:57,084][__main__][INFO] - num. test examples: 100
+[2024-02-22 20:39:06,685][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:39:07,620][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:07,620][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:09,660][__main__][INFO] - *** Evaluating validation ***
+[2024-02-22 20:39:09,660][trainer.tasks.clip_task][INFO] - Running clip score...
+[2024-02-22 20:39:12,142][trainer.tasks.base_task][INFO] - Gathering dict from all processes...
+[2024-02-22 20:39:12,310][trainer.tasks.base_task][INFO] - Uploading to wandb
+[2024-02-22 20:39:14,988][trainer.accelerators.base_accelerator][INFO] - Metrics: {'accuracy': 0.33, 'num_samples': 100}
+[2024-02-22 20:39:16,041][trainer.accelerators.base_accelerator][INFO] - Epoch 0 finished
+[2024-02-22 20:39:24,031][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:39:24,858][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:24,858][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:27,220][trainer.accelerators.base_accelerator][INFO] - Epoch 1 finished
+[2024-02-22 20:39:34,002][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:39:34,857][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:34,857][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:37,345][trainer.accelerators.base_accelerator][INFO] - Epoch 2 finished
+[2024-02-22 20:39:44,205][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:39:45,011][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:45,011][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:47,337][trainer.accelerators.base_accelerator][INFO] - Epoch 3 finished
+[2024-02-22 20:39:54,291][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:39:55,091][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:55,091][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:39:57,476][trainer.accelerators.base_accelerator][INFO] - Epoch 4 finished
+[2024-02-22 20:40:04,396][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:40:05,232][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:05,232][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:07,592][trainer.accelerators.base_accelerator][INFO] - Epoch 5 finished
+[2024-02-22 20:40:14,500][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:40:15,301][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:15,302][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:17,665][trainer.accelerators.base_accelerator][INFO] - Epoch 6 finished
+[2024-02-22 20:40:24,806][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:40:25,605][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:25,605][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:27,960][trainer.accelerators.base_accelerator][INFO] - Epoch 7 finished
+[2024-02-22 20:40:35,216][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:40:36,089][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:36,089][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:38,464][trainer.accelerators.base_accelerator][INFO] - Epoch 8 finished
+[2024-02-22 20:40:45,323][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:40:46,246][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:46,246][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:48,678][trainer.accelerators.base_accelerator][INFO] - Epoch 9 finished
+[2024-02-22 20:40:55,655][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:40:56,467][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:56,467][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:40:58,983][trainer.accelerators.base_accelerator][INFO] - Epoch 10 finished
+[2024-02-22 20:52:14,052][accelerate.utils.other][WARNING] - Detected kernel version 4.18.0, which is below the recommended minimum of 5.5.0; this can cause the process to hang. It is recommended to upgrade the kernel to the minimum version or higher.
+[2024-02-22 20:52:14,053][trainer.accelerators.base_accelerator][INFO] - Setting seed 42
+[2024-02-22 20:52:14,054][trainer.accelerators.base_accelerator][INFO] - Initialized accelerator: rank=0
+[2024-02-22 20:52:14,054][__main__][INFO] - Config can be found in test_output/config.yaml
+[2024-02-22 20:52:14,054][__main__][INFO] - Loading task
+[2024-02-22 20:52:14,365][__main__][INFO] - Loading model
+[2024-02-22 20:52:31,638][__main__][INFO] - Loading criterion
+[2024-02-22 20:52:31,639][__main__][INFO] - Loading optimizer
+[2024-02-22 20:52:31,642][__main__][INFO] - Loading lr scheduler
+[2024-02-22 20:52:31,643][__main__][INFO] - Loading dataloaders
+[2024-02-22 20:52:31,644][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:52:32,920][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:52:32,920][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:52:34,581][trainer.datasetss.my_hf_dataset][INFO] - Loading validation dataset
+[2024-02-22 20:52:35,413][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from validation dataset
+[2024-02-22 20:52:35,413][trainer.datasetss.my_hf_dataset][INFO] - Keeping only examples with label in validation split
+[2024-02-22 20:52:35,460][trainer.datasetss.my_hf_dataset][INFO] - Kept 100 examples from validation dataset
+[2024-02-22 20:52:35,460][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from validation dataset
+[2024-02-22 20:52:36,800][trainer.datasetss.my_hf_dataset][INFO] - Loading test dataset
+[2024-02-22 20:52:37,683][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from test dataset
+[2024-02-22 20:52:37,683][trainer.datasetss.my_hf_dataset][INFO] - Keeping only examples with label in test split
+[2024-02-22 20:52:37,740][trainer.datasetss.my_hf_dataset][INFO] - Kept 100 examples from test dataset
+[2024-02-22 20:52:37,740][trainer.datasetss.my_hf_dataset][INFO] - Loaded 100 examples from test dataset
+[2024-02-22 20:52:39,082][accelerate.accelerator][INFO] - Since you passed both train and evaluation dataloader, `is_train_batch_min` (here True will decide the `train_batch_size` (16).
+[2024-02-22 20:52:42,158][trainer.accelerators.base_accelerator][INFO] - No checkpoint found, training from scratch
+[2024-02-22 20:52:42,195][trainer.accelerators.base_accelerator][INFO] - Initializing trackers
+[2024-02-22 20:52:44,786][trainer.accelerators.base_accelerator][INFO] - Training config:
+[2024-02-22 20:52:44,919][trainer.accelerators.base_accelerator][INFO] - nvidia-smi stats: {'gpu_0_mem_used_gb': 23.060546875, 'gpu_1_mem_used_gb': 0.001953125, 'gpu_2_mem_used_gb': 0.001953125, 'gpu_3_mem_used_gb': 0.001953125, 'gpu_4_mem_used_gb': 0.001953125, 'gpu_5_mem_used_gb': 0.001953125, 'gpu_6_mem_used_gb': 0.001953125, 'gpu_7_mem_used_gb': 0.001953125}
+[2024-02-22 20:52:44,919][trainer.accelerators.base_accelerator][INFO] - ***** Running training *****
+[2024-02-22 20:52:44,919][trainer.accelerators.base_accelerator][INFO] -   Instantaneous batch size per device = 16
+[2024-02-22 20:52:44,919][trainer.accelerators.base_accelerator][INFO] -   Total train batch size (w. parallel, distributed & accumulation) = 16
+[2024-02-22 20:52:44,919][trainer.accelerators.base_accelerator][INFO] -   Gradient Accumulation steps = 1
+[2024-02-22 20:52:44,920][trainer.accelerators.base_accelerator][INFO] -   Total warmup steps = 500
+[2024-02-22 20:52:44,920][trainer.accelerators.base_accelerator][INFO] -   Total training steps = 600
+[2024-02-22 20:52:44,920][trainer.accelerators.base_accelerator][INFO] -   Total epochs = 600
+[2024-02-22 20:52:44,920][trainer.accelerators.base_accelerator][INFO] -   Steps per epoch = 1
+[2024-02-22 20:52:44,920][trainer.accelerators.base_accelerator][INFO] -   Update steps per epoch = 1
+[2024-02-22 20:52:44,920][trainer.accelerators.base_accelerator][INFO] -   Total optimization steps = 600
+[2024-02-22 20:52:44,920][trainer.accelerators.base_accelerator][INFO] -   Mixed precision = bf16
+[2024-02-22 20:52:44,920][trainer.accelerators.base_accelerator][INFO] -   World size = 1
+[2024-02-22 20:52:52,516][__main__][INFO] - task: CLIPTask
+[2024-02-22 20:52:52,516][__main__][INFO] - model: DeepSpeedEngine
+[2024-02-22 20:52:52,518][__main__][INFO] - num. model params: 986M
+[2024-02-22 20:52:52,520][__main__][INFO] - num. model trainable params: 986M
+[2024-02-22 20:52:52,520][__main__][INFO] - criterion: CLIPCriterion
+[2024-02-22 20:52:52,521][__main__][INFO] - num. train examples: 10
+[2024-02-22 20:52:52,521][__main__][INFO] - num. valid examples: 100
+[2024-02-22 20:52:52,521][__main__][INFO] - num. test examples: 100
+[2024-02-22 20:53:01,751][trainer.datasetss.my_hf_dataset][INFO] - Loading train dataset
+[2024-02-22 20:53:02,563][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:53:02,564][trainer.datasetss.my_hf_dataset][INFO] - Loaded 10 examples from train dataset
+[2024-02-22 20:53:04,538][__main__][INFO] - *** Evaluating validation ***
+[2024-02-22 20:53:04,539][trainer.tasks.clip_task][INFO] - Running clip score...
+[2024-02-22 20:53:07,068][trainer.tasks.base_task][INFO] - Gathering dict from all processes...
+[2024-02-22 20:53:07,268][trainer.tasks.base_task][INFO] - Uploading to wandb
+[2024-02-22 20:53:09,991][trainer.accelerators.base_accelerator][INFO] - Metrics: {'accuracy': 0.33, 'num_samples': 100}
+[2024-02-22 20:53:10,654][trainer.accelerators.base_accelerator][INFO] - Epoch 0 finished
