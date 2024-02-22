@@ -1,0 +1,12 @@
+# @package _global_
+
+defaults:
+  - /experiment/clip
+
+accelerator:
+  project_name: experiment
+
+output_dir: outputs
+
+model:
+  pretrained_model_name_or_path: yuvalkirstain/PickScore_v1
