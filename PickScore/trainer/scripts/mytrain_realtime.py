@@ -182,11 +182,47 @@ def main(cfg: TrainerConfig) -> None:
             # img_save_dir = os.path.join(image_save_path, f"epoch{epoch}")
             img_save_dir = image_save_path
             
+            ######## AI + cat #########
+            # generate cat images
+            # run only once across all GPUs
+            if accelerator.is_main_process:
+                image_generator.generate_cat_images(
+                    model=diffusion_model,
+                    img_save_dir=img_save_dir,
+                    n_images=40,
+                    generator=torch.manual_seed(epoch),
+                    n_inference_steps=10,
+                    # img_dim=(512,512),
+                )
+
+            accelerator.wait_for_everyone()
+
+            # Generate queries
+            image_directories = [os.path.join(img_save_dir, subdir) for subdir in os.listdir(img_save_dir)]
+            queries = query_generator.generate_queries(
+                image_directories=image_directories,
+                query_algorithm="random",
+                n_queries=10,
+            )
+
+            # Query AI and save new dataset
+            feedback_interface.reset_dataset() # get rid of previous epoch data # TODO design choice?
+            for query in queries:
+                feedback_interface.query(
+                    keyphrases=["black", "cute"],
+                    img_paths=query,
+                    prompt=prompt
+                )
+            feedback_interface.save_dataset(dataset_save_path=os.path.join(dataset_save_path, f"epoch{epoch}.parquet"))
             ######### AI + cat #########
+
+
+            # ######### AI + ice cream #########
             # # generate cat images
-            # image_generator.generate_cat_images(
+            # image_generator.generate_images_from_prompt_list(
             #     model=diffusion_model,
             #     img_save_dir=img_save_dir,
+            #     prompts=image_generator.TASK_TO_PROMPTS["ice cream"],
             #     n_images=40,
             #     generator=torch.manual_seed(epoch),
             #     n_inference_steps=10,
@@ -210,37 +246,6 @@ def main(cfg: TrainerConfig) -> None:
             #         prompt=prompt
             #     )
             # feedback_interface.save_dataset(dataset_save_path=os.path.join(dataset_save_path, f"epoch{epoch}.parquet"))
-            ######### AI + cat #########
-
-
-            ######### AI + ice cream #########
-            # generate cat images
-            image_generator.generate_cat_images(
-                model=diffusion_model,
-                img_save_dir=img_save_dir,
-                n_images=40,
-                generator=torch.manual_seed(epoch),
-                n_inference_steps=10,
-                # img_dim=(512,512),
-            )
-
-            # Generate queries
-            image_directories = [os.path.join(img_save_dir, subdir) for subdir in os.listdir(img_save_dir)]
-            queries = query_generator.generate_queries(
-                image_directories=image_directories,
-                query_algorithm="random",
-                n_queries=10,
-            )
-
-            # Query AI and save new dataset
-            feedback_interface.reset_dataset() # get rid of previous epoch data # TODO design choice?
-            for query in queries:
-                feedback_interface.query(
-                    keyphrases=["black", "cute"],
-                    img_paths=query,
-                    prompt=prompt
-                )
-            feedback_interface.save_dataset(dataset_save_path=os.path.join(dataset_save_path, f"epoch{epoch}.parquet"))
             ######### AI + ice cream #########
 
 
@@ -275,8 +280,8 @@ def main(cfg: TrainerConfig) -> None:
 
             # TODO - Below is temporary hack. Fix it to make dataset location point to the newly saved dataset
             # NOTE - dataloader.dataset.cfg contains dataset_loc
-            feedback_interface.save_dataset(dataset_save_path="/home/hayano/rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")
-            print("Overwrote dataset at /home/hayano/rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")        
+            feedback_interface.save_dataset(dataset_save_path="../rl4dgm/my_dataset/my_dataset_train.parquet")
+            # print("Overwrote dataset at /home/hayano/rl4dgm/my_dataset/my_dataset_train.parquet")        
             
             # Re-initialize dataloaders from newly collected dataset
             trainloader = reinitialize_trainloader(cfg.dataset)
