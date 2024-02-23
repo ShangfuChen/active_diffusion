@@ -3,4 +3,7 @@ logs/
 __pycache__/
 *.pyc
 *.zip
-ddpo_pytorch/trained_reward_model
+*.png
+*.jpg
+*.log
+*.parquet

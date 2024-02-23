@@ -1,5 +1,0 @@
-setup.py
-rl4dgm.egg-info/PKG-INFO
-rl4dgm.egg-info/SOURCES.txt
-rl4dgm.egg-info/dependency_links.txt
-rl4dgm.egg-info/top_level.txt
