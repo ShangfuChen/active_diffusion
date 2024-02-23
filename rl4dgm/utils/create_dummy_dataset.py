@@ -11,6 +11,7 @@ import random
 import numpy as np
 import argparse
 from datetime import datetime
+import shutil
 
 from rl4dgm.utils.query_generator import generate_queries
 
@@ -235,6 +236,9 @@ def generate_dummy_icecream_dataset(data_save_dir, n_images, n_queries, datafile
     preference_df.to_parquet(os.path.join(data_save_dir, datafile_name))
     print("Saved to: ", os.path.join(data_save_dir, datafile_name))
 
+    print("removing saved images...")
+    shutil.rmtree(os.path.join(data_save_dir, "image_data"))
+
 def preference_from_ranked_prompts(prompts, img_paths, **kwargs):
     """
     Generate labels for images given a list of prompts ordered from low to high scores, and a list of image paths containing one of the prompts
@@ -345,6 +349,10 @@ def generate_dummy_cat_dataset(data_save_dir, n_images, n_queries, datafile_name
     
     preference_df.to_parquet(os.path.join(data_save_dir, datafile_name))
     print("Saved to: ", os.path.join(data_save_dir, datafile_name))
+
+    print("removing saved images...")
+    shutil.rmtree(os.path.join(data_save_dir, "image_data"))
+
 
 
 # def generate_dummy_cat_dataset(image_folder, prompt, prompt_file_path, n_queries=50, data_save_path="dummy_dataset.parquet"):
