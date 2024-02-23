@@ -9,13 +9,13 @@ accelerator:
     port: 5900
   seed: 42
   resume_from_checkpoint: true
-  max_steps: 600
+  max_steps: 500
   num_epochs: 10
   validate_steps: 100
   eval_on_start: true
   project_name: experiment
   max_grad_norm: 1.0
-  save_steps: 100
+  save_steps: 1000
   metric_name: accuracy
   metric_mode: MAX
   limit_num_checkpoints: 50
@@ -87,7 +87,7 @@ dataset:
   drop_last: true
   _target_: trainer.datasetss.my_hf_dataset.MyHFDataset
   dataset_name: my_dataset
-  dataset_loc: ../rl4dgm/rl4dgm/my_dataset/my_dataset
+  dataset_loc: ../rl4dgm/my_dataset/my_dataset
   dataset_config_name: 'null'
   from_disk: false
   cache_dir: null

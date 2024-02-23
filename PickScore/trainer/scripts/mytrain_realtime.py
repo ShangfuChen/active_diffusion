@@ -2,8 +2,6 @@
 Pipeline for realtime image generation, feedback, and generative model training.
 """
 
-
-
 import json
 import os
 from typing import Any
@@ -21,11 +19,11 @@ from trainer.configs.configs import TrainerConfig, instantiate_with_cfg
 
 from diffusers import DiffusionPipeline
 
-from rl4dgm.rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
-import rl4dgm.rl4dgm.utils.generate_images as image_generator
-import rl4dgm.rl4dgm.utils.query_generator as query_generator
+from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
+from rl4dgm.utils.generate_images import ImageGenerator
+import rl4dgm.utils.query_generator as query_generator
 
-from rl4dgm.rl4dgm.utils.create_dummy_dataset import preference_from_ranked_prompts, preference_from_keyphrases
+from rl4dgm.utils.create_dummy_dataset import preference_from_ranked_prompts, preference_from_keyphrases
 
 logger = get_logger(__name__)
 
@@ -126,6 +124,8 @@ def main(cfg: TrainerConfig) -> None:
 
     accelerator.init_training(cfg)
 
+    image_generator = ImageGenerator()
+
     def evaluate():
         model.eval()
         end_of_train_dataloader = accelerator.gradient_state.end_of_dataloader
@@ -177,80 +177,113 @@ def main(cfg: TrainerConfig) -> None:
         print("Epoch ", epoch)
 
         #########################################
+        if epoch % 100 == 0: # TODO
+            # Generate new images TODO - currently assumes all images are generated using the same prompt
+            # img_save_dir = os.path.join(image_save_path, f"epoch{epoch}")
+            img_save_dir = image_save_path
+            
+            ######### AI + cat #########
+            # # generate cat images
+            # image_generator.generate_cat_images(
+            #     model=diffusion_model,
+            #     img_save_dir=img_save_dir,
+            #     n_images=40,
+            #     generator=torch.manual_seed(epoch),
+            #     n_inference_steps=10,
+            #     # img_dim=(512,512),
+            # )
 
-        # Generate new images TODO - currently assumes all images are generated using the same prompt
-        # START HERE !!!! TODO - update below parts to take AI feedback
-        img_save_dir = os.path.join(image_save_path, f"epoch{epoch}")
-        
-        # generate cat images
-        image_generator.generate_cat_images(
-            model=diffusion_model,
-            img_save_dir=img_save_dir,
-            n_images=40,
-            generator=torch.manual_seed(epoch),
-            n_inference_steps=10,
-        )
+            # # Generate queries
+            # image_directories = [os.path.join(img_save_dir, subdir) for subdir in os.listdir(img_save_dir)]
+            # queries = query_generator.generate_queries(
+            #     image_directories=image_directories,
+            #     query_algorithm="random",
+            #     n_queries=10,
+            # )
 
-        # Generate queries
-        # image_directories = []
-        # for subdir in os.listdir(img_save_dir):
-        #     files = os.listdir(os.path.join(img_save_dir, subdir))
-        #     image_directories += [os.path.join(img_save_dir, subdir, file) for file in files]
-        image_directories = [os.path.join(img_save_dir, subdir) for subdir in os.listdir(img_save_dir)]
-        print("================= image_directories =================\n", image_directories)
-        queries = query_generator.generate_queries(
-            image_directories=image_directories,
-            query_algorithm="random",
-            n_queries=10,
-        )
+            # # Query AI and save new dataset
+            # feedback_interface.reset_dataset() # get rid of previous epoch data # TODO design choice?
+            # for query in queries:
+            #     feedback_interface.query(
+            #         keyphrases=["black", "cute"],
+            #         img_paths=query,
+            #         prompt=prompt
+            #     )
+            # feedback_interface.save_dataset(dataset_save_path=os.path.join(dataset_save_path, f"epoch{epoch}.parquet"))
+            ######### AI + cat #########
 
-        # Query AI and save new dataset
-        feedback_interface.reset_dataset() # get rid of previous epoch data # TODO design choice?
-        for query in queries:
-            feedback_interface.query(
-                keyphrases=["black", "cute"],
-                img_paths=query,
-                prompt=prompt
+
+            ######### AI + ice cream #########
+            # generate cat images
+            image_generator.generate_cat_images(
+                model=diffusion_model,
+                img_save_dir=img_save_dir,
+                n_images=40,
+                generator=torch.manual_seed(epoch),
+                n_inference_steps=10,
+                # img_dim=(512,512),
             )
-        feedback_interface.save_dataset(dataset_save_path=os.path.join(dataset_save_path, f"epoch{epoch}.parquet"))
-        
-        # image_generator.generate_images(
-        #     model=diffusion_model,
-        #     img_save_dir=img_save_dir,
-        #     prompt=prompt,
-        #     n_images=50, # TODO
-        #     generator=torch.manual_seed(epoch), # TODO
-        #     n_inference_steps=10, # TODO
-        # )
 
-        # # Generate queries
-        # queries = query_generator.generate_queries(
-        #     image_directories=[
-        #         img_save_dir,
-        #     ],
-        #     query_algorithm="random", # TODO get this from config
-        #     n_queries=10, # TODO get this from config
-        # )
+            # Generate queries
+            image_directories = [os.path.join(img_save_dir, subdir) for subdir in os.listdir(img_save_dir)]
+            queries = query_generator.generate_queries(
+                image_directories=image_directories,
+                query_algorithm="random",
+                n_queries=10,
+            )
 
-        # # Query human and save new dataset
-        # feedback_interface.reset_dataset() # get rid of previous epoch data # TODO design choice?
-        # for query in queries:
-        #     feedback_interface.query(img_paths=query, prompt=prompt)
-        # feedback_interface.save_dataset(dataset_save_path=os.path.join(dataset_save_path, f"epoch{epoch}.parquet"))
-        # print("Saved new dataset to ", os.path.join(dataset_save_path, f"epoch{epoch}"))
+            # Query AI and save new dataset
+            feedback_interface.reset_dataset() # get rid of previous epoch data # TODO design choice?
+            for query in queries:
+                feedback_interface.query(
+                    keyphrases=["black", "cute"],
+                    img_paths=query,
+                    prompt=prompt
+                )
+            feedback_interface.save_dataset(dataset_save_path=os.path.join(dataset_save_path, f"epoch{epoch}.parquet"))
+            ######### AI + ice cream #########
 
-        # TODO - Below is temporary hack. Fix it to make dataset location point to the newly saved dataset
-        # NOTE - dataloader.dataset.cfg contains dataset_loc
-        feedback_interface.save_dataset(dataset_save_path="../rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")
-        print("Overwrote dataset at ../rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")        
-        
-        # Re-initialize dataloaders from newly collected dataset
-        trainloader = reinitialize_trainloader(cfg.dataset)
-        trainloader = accelerator.prepare(trainloader)
-        split2dataloader["train"] = trainloader
-        dataloaders = split2dataloader.values()
 
-        # TODO TEST
+            ######### Human #########
+            # image_generator.generate_images(
+            #     model=diffusion_model,
+            #     img_save_dir=img_save_dir,
+            #     prompt=prompt,
+            #     n_images=50, # TODO
+            #     generator=torch.manual_seed(epoch), # TODO
+            #     n_inference_steps=10, # TODO
+            # )
+
+            # # Generate queries
+            # queries = query_generator.generate_queries(
+            #     image_directories=[
+            #         img_save_dir,
+            #     ],
+            #     query_algorithm="random", # TODO get this from config
+            #     n_queries=10, # TODO get this from config
+            # )
+
+            # # Query human and save new dataset
+            # feedback_interface.reset_dataset() # get rid of previous epoch data # TODO design choice?
+            # for query in queries:
+            #     feedback_interface.query(img_paths=query, prompt=prompt)
+            # feedback_interface.save_dataset(dataset_save_path=os.path.join(dataset_save_path, f"epoch{epoch}.parquet"))
+            # print("Saved new dataset to ", os.path.join(dataset_save_path, f"epoch{epoch}"))
+
+            ######### Human #########
+
+
+            # TODO - Below is temporary hack. Fix it to make dataset location point to the newly saved dataset
+            # NOTE - dataloader.dataset.cfg contains dataset_loc
+            feedback_interface.save_dataset(dataset_save_path="/home/hayano/rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")
+            print("Overwrote dataset at /home/hayano/rl4dgm/rl4dgm/my_dataset/my_dataset_train.parquet")        
+            
+            # Re-initialize dataloaders from newly collected dataset
+            trainloader = reinitialize_trainloader(cfg.dataset)
+            trainloader = accelerator.prepare(trainloader)
+            split2dataloader["train"] = trainloader
+            dataloaders = split2dataloader.values()
+
         #########################################
         train_loss, lr = 0.0, 0.0
         for step, batch in enumerate(split2dataloader[cfg.dataset.train_split_name]):

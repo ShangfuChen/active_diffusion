@@ -12,7 +12,7 @@ import numpy as np
 import argparse
 from datetime import datetime
 
-from rl4dgm.rl4dgm.utils.query_generator import generate_queries
+from rl4dgm.utils.query_generator import generate_queries
 
 NUM_ITERS_TO_RUN = 3
 NUM_INFERENCE_STEPS = 10

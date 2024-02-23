@@ -56,13 +56,13 @@ class BaseAcceleratorConfig:
     debug: DebugConfig = DebugConfig()
     seed: int = 42
     resume_from_checkpoint: bool = True
-    max_steps: int = 600
+    max_steps: int = 500
     num_epochs: int = 10
     validate_steps: int = 100
     eval_on_start: bool = True
     project_name: str = "reward"
     max_grad_norm: float = 1.0
-    save_steps: int = 100
+    save_steps: int = 1000
     metric_name: str = "accuracy"
     metric_mode: MetricMode = MetricMode.MAX
     limit_num_checkpoints: int = 50
