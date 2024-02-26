@@ -8,3 +8,6 @@ __pycache__/
 *.log
 *.parquet
 PickScore/.hydra/
+PickScore/trainer.egg-info/
+ddpo.egg-info/
+rl4dgm/rl4dgm.egg-info/

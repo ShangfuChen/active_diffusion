@@ -26,7 +26,7 @@ import tqdm
 import tempfile
 from PIL import Image
 from transformers import AutoProcessor, AutoModel
-
+from PickScore.trainer.scripts.mystep_realtime import setup, reward_train_step
 
 tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
 
@@ -261,7 +261,7 @@ def main(_):
 
     # executor to perform callbacks asynchronously. this is beneficial for the llava callbacks which makes a request to a
     # remote server running llava inference.
-    executor = futures.ThreadPoolExecutor(max_workers=2)
+    executor = futures.ThreadPoolExecutor(max_workers=4)
 
     # Train!
     samples_per_epoch = (
@@ -308,6 +308,8 @@ def main(_):
     processor = AutoProcessor.from_pretrained(processor_name_or_path)
     # pickscore_model = AutoModel.from_pretrained(config.ckpt_path).eval().to(accelerator.device)
     pickscore_model = AutoModel.from_pretrained(pretrained_model_name_or_path="yuvalkirstain/PickScore_v1").eval().to(accelerator.device)
+    # Setup everything Pickscore needs
+    setup()
 
     global_step = 0
     for epoch in range(first_epoch, config.num_epochs):
@@ -360,14 +362,15 @@ def main(_):
             )  # (batch_size, num_steps)
 
             # compute rewards asynchronously
+            # other reward functions besides the pickscore
             # rewards = executor.submit(reward_fn, images, prompts, prompt_metadata)
-            # only for pickscore reward only
-            rewards = executor.submit(reward_fn,
-                                      processor,
-                                      pickscore_model,
-                                      images,
-                                      prompts,
-                                      device=accelerator.device)
+            # TODO pass. Calculate rewards after pickscore model finetuning
+            # rewards = executor.submit(reward_fn,
+                                      # processor,
+                                      # pickscore_model,
+                                      # images,
+                                      # prompts,
+                                      # device=accelerator.device)
             # yield to to make sure reward computation starts
             time.sleep(0)
 
@@ -383,9 +386,15 @@ def main(_):
                         :, 1:
                     ],  # each entry is the latent after timestep t
                     "log_probs": log_probs,
-                    "rewards": rewards,
+                    # "rewards": rewards,
+                    "images": images,
                 }
             )
+
+        ################## Update RM and Calculate Rewards ##################
+        
+
+
 
         # wait for all rewards to be computed
         for sample in tqdm(
@@ -400,7 +409,7 @@ def main(_):
 
         # collate samples into dict where each entry has shape (num_batches_per_epoch * sample.batch_size, ...)
         samples = {k: torch.cat([s[k] for s in samples]) for k in samples[0].keys()}
-
+        
         # this is a hack to force wandb to log the images as JPEGs instead of PNGs
         with tempfile.TemporaryDirectory() as tmpdir:
             for i, image in enumerate(images):

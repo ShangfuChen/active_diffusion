@@ -3,7 +3,7 @@
 output_dir: outputs/${accelerator.project_name}/clip
 
 dataset:
-  batch_size: 16
+  batch_size: 4
 
 accelerator:
   mixed_precision: BF16
