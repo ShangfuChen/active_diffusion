@@ -86,12 +86,11 @@ def verify_or_write_config(cfg: TrainerConfig):
 
 
 @hydra.main(version_base=None, config_path="../conf", config_name="config")
-def setup(cfg: TrainerConfig) -> None:
+def reward_model_setup(cfg: TrainerConfig):
     print("-"*50)
     print("Config", cfg)
     print("\n\n", cfg.dataset.dataset_name)
     print("-"*50)
-
     accelerator = instantiate_with_cfg(cfg.accelerator)
 
     if cfg.debug.activate and accelerator.is_main_process:
@@ -157,8 +156,6 @@ def setup(cfg: TrainerConfig) -> None:
     feedback_interface = AIFeedbackInterface(preference_function=preference_from_keyphrases)
 
     #########################################
-
-
     logger.info(f"task: {task.__class__.__name__}")
     logger.info(f"model: {model.__class__.__name__}")
     logger.info(f"num. model params: {int(sum(p.numel() for p in model.parameters()) // 1e6)}M")
@@ -287,7 +284,7 @@ def reward_train_step(images, reward_model):
 
             # TODO - Below is temporary hack. Fix it to make dataset location point to the newly saved dataset
             # NOTE - dataloader.dataset.cfg contains dataset_loc
-            feedback_interface.save_dataset(dataset_save_path="../rl4dgm/my_dataset/my_dataset_train.parquet")
+            feedback_interface.save_dataset(dataset_save_path="rl4dgm/my_dataset/my_dataset_train.parquet")
             # print("Overwrote dataset at /home/hayano/rl4dgm/my_dataset/my_dataset_train.parquet")        
             
             # Re-initialize dataloaders from newly collected dataset

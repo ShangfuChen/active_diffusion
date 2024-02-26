@@ -1,5 +1,6 @@
 from collections import defaultdict
 import contextlib
+import sys
 import os
 import datetime
 from concurrent import futures
@@ -26,21 +27,26 @@ import tqdm
 import tempfile
 from PIL import Image
 from transformers import AutoProcessor, AutoModel
-from PickScore.trainer.scripts.mystep_realtime import setup, reward_train_step
+from PickScore.trainer.scripts.mystep_realtime import reward_model_setup, reward_train_step
 
 tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
+# Add PickScore directory
+# sys.path.append('PickScore')
 
-
-FLAGS = flags.FLAGS
-config_flags.DEFINE_config_file("config", "config/base.py", "Training configuration.")
+# FLAGS = flags.FLAGS
+# config_flags.DEFINE_config_file("config", "config/base.py", "Training configuration.")
 
 logger = get_logger(__name__)
 
 
 def main(_):
+    # Setup everything Pickscore needs
+    # TODO #
+    # Do not return anything yet
+    # hydra.main wrapper does not support returning anything
+    all_configs = reward_model_setup()
     # basic Accelerate and logging setup
-    config = FLAGS.config
-
+    config = all_configs['ddpo_conf']
     unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
     if not config.run_name:
         config.run_name = unique_id
@@ -62,7 +68,7 @@ def main(_):
             )
 
     # number of timesteps within each trajectory to train on
-    num_train_timesteps = int(config.sample.num_steps * config.train.timestep_fraction)
+    num_train_timesteps = int(config.sample_num_steps * config.train_timestep_fraction)
 
     accelerator_config = ProjectConfiguration(
         project_dir=os.path.join(config.logdir, config.run_name),
@@ -74,11 +80,11 @@ def main(_):
         log_with="wandb",
         mixed_precision=config.mixed_precision,
         project_config=accelerator_config,
-        # we always accumulate gradients across timesteps; we want config.train.gradient_accumulation_steps to be the
+        # we always accumulate gradients across timesteps; we want config.train_gradient_accumulation_steps to be the
         # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
         # the total number of optimizer steps to accumulate across.
         gradient_accumulation_steps=\
-          config.train.gradient_accumulation_steps*config.train.num_update)
+          config.train_gradient_accumulation_steps*config.train_num_update)
     if accelerator.is_main_process:
         accelerator.init_trackers(
             project_name="active-diffusion",
@@ -207,7 +213,7 @@ def main(_):
         torch.backends.cuda.matmul.allow_tf32 = True
 
     # Initialize the optimizer
-    if config.train.use_8bit_adam:
+    if config.train_use_8bit_adam:
         try:
             import bitsandbytes as bnb
         except ImportError:
@@ -221,10 +227,10 @@ def main(_):
 
     optimizer = optimizer_cls(
         unet.parameters(),
-        lr=config.train.learning_rate,
-        betas=(config.train.adam_beta1, config.train.adam_beta2),
-        weight_decay=config.train.adam_weight_decay,
-        eps=config.train.adam_epsilon,
+        lr=config.train_learning_rate,
+        betas=(config.train_adam_beta1, config.train_adam_beta2),
+        weight_decay=config.train_adam_weight_decay,
+        eps=config.train_adam_epsilon,
     )
 
     # prepare prompt and reward fn
@@ -241,8 +247,8 @@ def main(_):
             max_length=pipeline.tokenizer.model_max_length,
         ).input_ids.to(accelerator.device)
     )[0]
-    sample_neg_prompt_embeds = neg_prompt_embed.repeat(config.sample.batch_size, 1, 1)
-    train_neg_prompt_embeds = neg_prompt_embed.repeat(config.train.batch_size, 1, 1)
+    sample_neg_prompt_embeds = neg_prompt_embed.repeat(config.sample_batch_size, 1, 1)
+    train_neg_prompt_embeds = neg_prompt_embed.repeat(config.train_batch_size, 1, 1)
 
     # initialize stat tracker
     if config.per_prompt_stat_tracking:
@@ -265,22 +271,22 @@ def main(_):
 
     # Train!
     samples_per_epoch = (
-        config.sample.batch_size
+        config.sample_batch_size
         * accelerator.num_processes
-        * config.sample.num_batches_per_epoch
+        * config.sample_num_batches_per_epoch
     )
     total_train_batch_size = (
-        config.train.batch_size
+        config.train_batch_size
         * accelerator.num_processes
-        * config.train.gradient_accumulation_steps
+        * config.train_gradient_accumulation_steps
     )
 
     logger.info("***** Running training *****")
     logger.info(f"  Num Epochs = {config.num_epochs}")
-    logger.info(f"  Sample batch size per device = {config.sample.batch_size}")
-    logger.info(f"  Train batch size per device = {config.train.batch_size}")
+    logger.info(f"  Sample batch size per device = {config.sample_batch_size}")
+    logger.info(f"  Train batch size per device = {config.train_batch_size}")
     logger.info(
-        f"  Gradient Accumulation steps = {config.train.gradient_accumulation_steps}"
+        f"  Gradient Accumulation steps = {config.train_gradient_accumulation_steps}"
     )
     logger.info("")
     logger.info(f"  Total number of samples per epoch = {samples_per_epoch}")
@@ -290,10 +296,10 @@ def main(_):
     logger.info(
         f"  Number of gradient updates per inner epoch = {samples_per_epoch // total_train_batch_size}"
     )
-    logger.info(f"  Number of inner epochs = {config.train.num_inner_epochs}")
+    logger.info(f"  Number of inner epochs = {config.train_num_inner_epochs}")
 
-    assert config.sample.batch_size >= config.train.batch_size
-    assert config.sample.batch_size % config.train.batch_size == 0
+    assert config.sample_batch_size >= config.train_batch_size
+    assert config.sample_batch_size % config.train_batch_size == 0
     assert samples_per_epoch % total_train_batch_size == 0
 
     if config.resume_from:
@@ -308,8 +314,6 @@ def main(_):
     processor = AutoProcessor.from_pretrained(processor_name_or_path)
     # pickscore_model = AutoModel.from_pretrained(config.ckpt_path).eval().to(accelerator.device)
     pickscore_model = AutoModel.from_pretrained(pretrained_model_name_or_path="yuvalkirstain/PickScore_v1").eval().to(accelerator.device)
-    # Setup everything Pickscore needs
-    setup()
 
     global_step = 0
     for epoch in range(first_epoch, config.num_epochs):
@@ -318,7 +322,7 @@ def main(_):
         samples = []
         prompts = []
         for i in tqdm(
-            range(config.sample.num_batches_per_epoch),
+            range(config.sample_num_batches_per_epoch),
             desc=f"Epoch {epoch}: sampling",
             disable=not accelerator.is_local_main_process,
             position=0,
@@ -326,8 +330,8 @@ def main(_):
             # generate prompts
             prompts, prompt_metadata = zip(
                 *[
-                    prompt_fn(**config.prompt_fn_kwargs)
-                    for _ in range(config.sample.batch_size)
+                    prompt_fn()
+                    for _ in range(config.sample_batch_size)
                 ]
             )
 
@@ -347,9 +351,9 @@ def main(_):
                     pipeline,
                     prompt_embeds=prompt_embeds,
                     negative_prompt_embeds=sample_neg_prompt_embeds,
-                    num_inference_steps=config.sample.num_steps,
-                    guidance_scale=config.sample.guidance_scale,
-                    eta=config.sample.eta,
+                    num_inference_steps=config.sample_num_steps,
+                    guidance_scale=config.sample_guidance_scale,
+                    eta=config.sample_eta,
                     output_type="pt",
                 )
 
@@ -358,19 +362,19 @@ def main(_):
             )  # (batch_size, num_steps + 1, 4, 64, 64)
             log_probs = torch.stack(log_probs, dim=1)  # (batch_size, num_steps, 1)
             timesteps = pipeline.scheduler.timesteps.repeat(
-                config.sample.batch_size, 1
+                config.sample_batch_size, 1
             )  # (batch_size, num_steps)
 
             # compute rewards asynchronously
             # other reward functions besides the pickscore
-            # rewards = executor.submit(reward_fn, images, prompts, prompt_metadata)
+            rewards = executor.submit(reward_fn, images, prompts, prompt_metadata)
             # TODO pass. Calculate rewards after pickscore model finetuning
-            # rewards = executor.submit(reward_fn,
-                                      # processor,
-                                      # pickscore_model,
-                                      # images,
-                                      # prompts,
-                                      # device=accelerator.device)
+            rewards = executor.submit(reward_fn,
+                                      processor,
+                                      pickscore_model,
+                                      images,
+                                      prompts,
+                                      device=accelerator.device)
             # yield to to make sure reward computation starts
             time.sleep(0)
 
@@ -386,13 +390,14 @@ def main(_):
                         :, 1:
                     ],  # each entry is the latent after timestep t
                     "log_probs": log_probs,
-                    # "rewards": rewards,
+                    "rewards": rewards,
                     "images": images,
                 }
             )
 
         ################## Update RM and Calculate Rewards ##################
-        
+        samples = {k: torch.cat([s[k] for s in samples]) for k in samples[0].keys()}
+         
 
 
 
@@ -408,7 +413,6 @@ def main(_):
             sample["rewards"] = torch.as_tensor(rewards, device=accelerator.device)
 
         # collate samples into dict where each entry has shape (num_batches_per_epoch * sample.batch_size, ...)
-        samples = {k: torch.cat([s[k] for s in samples]) for k in samples[0].keys()}
         
         # this is a hack to force wandb to log the images as JPEGs instead of PNGs
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -471,12 +475,12 @@ def main(_):
         total_batch_size, num_timesteps = samples["timesteps"].shape
         assert (
             total_batch_size
-            == config.sample.batch_size * config.sample.num_batches_per_epoch
+            == config.sample_batch_size * config.sample_num_batches_per_epoch
         )
-        assert num_timesteps == config.sample.num_steps
+        assert num_timesteps == config.sample_num_steps
 
         #################### TRAINING ####################
-        for inner_epoch in range(config.train.num_inner_epochs):
+        for inner_epoch in range(config.train_num_inner_epochs):
             # shuffle samples along batch dimension
             perm = torch.randperm(total_batch_size, device=accelerator.device)
             samples = {k: v[perm] for k, v in samples.items()}
@@ -496,7 +500,7 @@ def main(_):
 
             # rebatch for training
             samples_batched = {
-                k: v.reshape(-1, config.train.batch_size, *v.shape[1:])
+                k: v.reshape(-1, config.train_batch_size, *v.shape[1:])
                 for k, v in samples.items()
             }
 
@@ -514,7 +518,7 @@ def main(_):
                 position=0,
                 disable=not accelerator.is_local_main_process,
             ):
-                if config.train.cfg:
+                if config.train_cfg:
                     # concat negative prompts to sample prompts to avoid two forward passes
                     embeds = torch.cat(
                         [train_neg_prompt_embeds, sample["prompt_embeds"]]
@@ -523,7 +527,7 @@ def main(_):
                     embeds = sample["prompt_embeds"]
                 
                 for k in tqdm(
-                    range(config.train.num_update),
+                    range(config.train_num_update),
                     desc="Timestep",
                     position=1,
                     leave=False,
@@ -532,7 +536,7 @@ def main(_):
                     j = random.randint(0, num_timesteps-1)
                     with accelerator.accumulate(unet):
                         with autocast():
-                            if config.train.cfg:
+                            if config.train_cfg:
                                 noise_pred = unet(
                                     torch.cat([sample["latents"][:, j]] * 2),
                                     torch.cat([sample["timesteps"][:, j]] * 2),
@@ -541,7 +545,7 @@ def main(_):
                                 noise_pred_uncond, noise_pred_text = noise_pred.chunk(2)
                                 noise_pred = (
                                     noise_pred_uncond
-                                    + config.sample.guidance_scale
+                                    + config.sample_guidance_scale
                                     * (noise_pred_text - noise_pred_uncond)
                                 )
                             else:
@@ -558,23 +562,23 @@ def main(_):
                                 noise_pred,
                                 sample["timesteps"][:, j],
                                 sample["latents"][:, j],
-                                eta=config.sample.eta,
+                                eta=config.sample_eta,
                                 prev_sample=sample["next_latents"][:, j],
                             )
 
                         # ppo logic
                         advantages = torch.clamp(
                             sample["advantages"],
-                            -config.train.adv_clip_max,
-                            config.train.adv_clip_max,
+                            -config.train_adv_clip_max,
+                            config.train_adv_clip_max,
                         )
                         ratio = torch.exp(log_prob - sample["log_probs"][:, j])
                         info["ratio"].append(ratio)
                         unclipped_loss = -advantages * ratio
                         clipped_loss = -advantages * torch.clamp(
                             ratio,
-                            1.0 - config.train.clip_range,
-                            1.0 + config.train.clip_range,
+                            1.0 - config.train_clip_range,
+                            1.0 + config.train_clip_range,
                         )
                         loss = torch.mean(torch.maximum(unclipped_loss, clipped_loss))
 
@@ -589,7 +593,7 @@ def main(_):
                         info["clipfrac"].append(
                             torch.mean(
                                 (
-                                    torch.abs(ratio - 1.0) > config.train.clip_range
+                                    torch.abs(ratio - 1.0) > config.train_clip_range
                                 ).float()
                             )
                         )
@@ -599,7 +603,7 @@ def main(_):
                         accelerator.backward(loss)
                         if accelerator.sync_gradients:
                             accelerator.clip_grad_norm_(
-                                unet.parameters(), config.train.max_grad_norm
+                                unet.parameters(), config.train_max_grad_norm
                             )
                         optimizer.step()
                         optimizer.zero_grad()
@@ -608,7 +612,7 @@ def main(_):
                     if accelerator.sync_gradients:
                         # assert (j == num_train_timesteps - 1) and (
                             # i + 1
-                        # ) % config.train.gradient_accumulation_steps == 0
+                        # ) % config.train_gradient_accumulation_steps == 0
                         # log training-related stuff
                         info = {k: torch.mean(torch.stack(v)) for k, v in info.items()}
                         info = accelerator.reduce(info, reduction="mean")

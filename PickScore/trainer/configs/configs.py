@@ -10,6 +10,7 @@ import trainer.criterions
 import trainer.datasetss
 import trainer.optimizers
 import trainer.lr_schedulers
+import trainer.ddpo_conf
 from trainer.accelerators.base_accelerator import BaseAcceleratorConfig
 from trainer.models.base_model import BaseModelConfig
 from trainer.tasks.base_task import BaseTaskConfig
@@ -79,9 +80,10 @@ defaults = [
     {"task": "clip"},
     {"model": "clip"},
     {"criterion": "clip"},
-    {"dataset": "clip"},
+    {"dataset": "my_dataset"},
     {"optimizer": "dummy"},
     {"lr_scheduler": "dummy"},
+    {"ddpo_conf": "ddpo_train"},
 ]
 
 
@@ -101,5 +103,6 @@ class TrainerConfig:
     dataset: Any = MISSING
     optimizer: Any = MISSING
     lr_scheduler: Any = MISSING
+    ddpo_conf: Any = MISSING
     debug: DebugConfig = DebugConfig()
     output_dir: str = "outputs"

@@ -7,6 +7,7 @@ __pycache__/
 *.jpg
 *.log
 *.parquet
+.hydra/
 PickScore/.hydra/
 PickScore/trainer.egg-info/
 ddpo.egg-info/

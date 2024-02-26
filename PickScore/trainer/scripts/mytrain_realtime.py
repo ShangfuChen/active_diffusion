@@ -91,7 +91,6 @@ def main(cfg: TrainerConfig) -> None:
     print("Config", cfg)
     print("\n\n", cfg.dataset.dataset_name)
     print("-"*50)
-
     accelerator = instantiate_with_cfg(cfg.accelerator)
 
     if cfg.debug.activate and accelerator.is_main_process:
