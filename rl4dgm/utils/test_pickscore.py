@@ -65,6 +65,7 @@ def score_and_save_images(prompt, img_dir, img_save_dir, hf_model_path, ckpt_pat
         imgs.append(Image.open(os.path.join(img_dir, img)))
 
     probs, scores = calc_probs(images=imgs, prompt=prompt)
+    breakpoint()
     # print("list of images\n", img_names)
     # print("scores\n", scores)
 

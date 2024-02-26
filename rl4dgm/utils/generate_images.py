@@ -126,31 +126,4 @@ class ImageGenerator:
             n_inference_steps=n_inference_steps,
             img_dim=img_dim,
         )
-        # prompts = [
-        #     "Cute black cat with round eyes",
-        #     "Demonic black cat with sharp eyes",
-        #     "Cute white cat with round eyes",
-        #     "Demonic white cat with sharp eyes",
-        # ]
-
-        # # Compute number of images to generate per prompt
-        # n_prompts = len(prompts)
-        # base_int = n_images // n_prompts
-        # remainder = n_images % n_prompts
-        # n_imgs_per_prompt = [base_int] * n_prompts
-        # for i in range(remainder):
-        #     n_imgs_per_prompt[i] += 1
-        # random.shuffle(n_imgs_per_prompt)
-
-        # for prompt, n in zip(prompts, n_imgs_per_prompt):
-        #     img_save_folder = os.path.join(img_save_dir, prompt.replace(" ", "_"))
-        #     generate_images(
-        #         model=model,
-        #         img_save_dir=img_save_folder,
-        #         prompt=prompt,
-        #         n_images=n,
-        #         generator=generator,
-        #         n_inference_steps=n_inference_steps,
-        #         img_dim=img_dim,
-        #     )
-        
+     

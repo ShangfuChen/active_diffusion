@@ -13,7 +13,7 @@ import argparse
 from datetime import datetime
 import shutil
 
-from rl4dgm.utils.query_generator import generate_queries
+from rl4dgm.utils.query_generator import QueryGenerator
 
 NUM_ITERS_TO_RUN = 3
 NUM_INFERENCE_STEPS = 10
@@ -208,7 +208,8 @@ def generate_dummy_icecream_dataset(data_save_dir, n_images, n_queries, datafile
     preference_df = create_pickapic_dataframe()
 
     # generate random queries
-    queries = generate_queries(image_directories=img_dirs, query_algorithm="random", n_queries=100)
+    query_generator = QueryGenerator()
+    queries = query_generator.generate_queries(image_directories=img_dirs, query_algorithm="random", n_queries=100)
     for query in queries:
         im0, im1 = query
 
@@ -334,7 +335,8 @@ def generate_dummy_cat_dataset(data_save_dir, n_images, n_queries, datafile_name
     preference_df = create_pickapic_dataframe()
 
     # generate random queries
-    queries = generate_queries(image_directories=img_dirs, query_algorithm="random", n_queries=100)
+    query_generator = QueryGenerator()
+    queries = query_generator.generate_queries(image_directories=img_dirs, query_algorithm="random", n_queries=100)
     for query in queries:
         im0, im1 = query
 

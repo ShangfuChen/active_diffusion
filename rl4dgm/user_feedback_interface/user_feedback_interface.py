@@ -10,6 +10,8 @@ from enum import IntEnum
 from PIL import Image, ImageDraw, ImageFont
 import pandas as pd
 from datetime import datetime
+import torch
+from torchvision.transforms.functional import to_pil_image
 
 NUMBERING_FONT_SIZE = 64
 NUMBERING_FONT = ImageFont.truetype("FreeMono.ttf", NUMBERING_FONT_SIZE)
@@ -74,6 +76,38 @@ class FeedbackInterface:
 
         # append query + feedback to self.df
         self._store_feedback(feedback, img_paths, prompt)
+
+    def query_batch(self, prompt, image_batch, query_indices, **kwargs):
+        """
+        Version of query() that takes a batch of images in the form of tensor (B x C x H x W),
+        and a list of index-pairs to query
+
+        Args:
+            prompt (str) : prompt
+            image_batch (Tensor) : (B x C x H x W) tensor of images
+            query_indices (list(list(int))) : list of queries where each entry is [idx0, idx1] of images to query
+        """
+        prompt = self._process_prompt(prompt)
+
+        for query in query_indices:
+            # Get query images in PIL format 
+            idx0, idx1 = query
+            im0 = to_pil_image(image_batch[idx0])
+            im1 = to_pil_image(image_batch[idx1])
+
+            # Save query image for user
+            self._save_query_image(
+                images=[im0, im1],
+                prompt=prompt,
+                img_save_path="query_image.png",
+            )
+
+            # Get feedback
+            feedback = self._get_feedback(prompt=prompt, images=[im0, im1])
+
+            # Append query + feedback to self.df
+            self._store_feedback(feedback=feedback, images=[im0, im1], prompt=prompt)
+        
 
     def save_dataset(self, dataset_save_path):
         """
@@ -221,15 +255,22 @@ class FeedbackInterface:
         """
         raise NotImplementedError
 
-    def _store_feedback(self, feedback, img_paths, prompt):
+    def _store_feedback(self, feedback, images, prompt):
         """
         Adds feedback to self.df
 
         Args:
-            img_paths (list(str)) : list of paths to images included in this query
+            images (list(str) or list(PIL.Image)) : list of paths to images or list of PIL Images
             feedback (tuple(float)) : feedback provided by the user (label0, label1)
             prompt (str) : text prompt
         """
+
+        img_paths = images.copy()
+        if not type(images[0]) == str:
+            img_paths[0] = "tmp_im0.jpg"
+            img_paths[1] = "tmp_im1.jpg"
+            images[0].save(img_paths[0])
+            images[1].save(img_paths[1])
 
         # TODO currently only supports binary feedback preference
         are_different = not img_paths[0] == img_paths[1]
@@ -240,13 +281,13 @@ class FeedbackInterface:
         image_0_url = ""
         image_1_uid = "1"
         image_1_url = ""
-        
+
         with open(img_paths[0], "rb") as img0:
             jpg_0 = img0.read()
 
         with open(img_paths[1], "rb") as img1:
             jpg_1 = img1.read()
-            
+
         # TODO - there is no option for "no preference"
         label0, label1 = feedback
         model0 = ""
@@ -262,6 +303,49 @@ class FeedbackInterface:
             label0, label1, model0, model1,
             ranking_id, user_id, num_example_per_prompt,
         ]
+    
+
+    # def _store_feedback(self, feedback, img_paths, prompt):
+    #     """
+    #     Adds feedback to self.df
+
+    #     Args:
+    #         img_paths (list(str)) : list of paths to images included in this query
+    #         feedback (tuple(float)) : feedback provided by the user (label0, label1)
+    #         prompt (str) : text prompt
+    #     """
+
+    #     # TODO currently only supports binary feedback preference
+    #     are_different = not img_paths[0] == img_paths[1]
+    #     best_image_uid = ""
+    #     created_at = datetime.now()
+    #     has_label = True
+    #     image_0_uid = "0"
+    #     image_0_url = ""
+    #     image_1_uid = "1"
+    #     image_1_url = ""
+        
+    #     with open(img_paths[0], "rb") as img0:
+    #         jpg_0 = img0.read()
+
+    #     with open(img_paths[1], "rb") as img1:
+    #         jpg_1 = img1.read()
+            
+    #     # TODO - there is no option for "no preference"
+    #     label0, label1 = feedback
+    #     model0 = ""
+    #     model1 = ""
+    #     ranking_id = 0
+    #     user_id = 0
+    #     num_example_per_prompt = 1
+        
+    #     self.df.loc[len(self.df.index)] = [
+    #         are_different, best_image_uid, prompt, created_at, has_label,
+    #         image_0_uid, image_0_url, image_1_uid, image_1_url,
+    #         jpg_0, jpg_1,
+    #         label0, label1, model0, model1,
+    #         ranking_id, user_id, num_example_per_prompt,
+    #     ]
     
 class AIFeedbackInterface(FeedbackInterface):
     """
