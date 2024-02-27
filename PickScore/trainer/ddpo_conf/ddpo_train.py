@@ -113,6 +113,7 @@ class DDPOTrainConfig:
     # advantages. set `config.per_prompt_stat_tracking` to None to disable per-prompt stat tracking, in which case
     # advantages will be calculated using the mean and std of the entire batch.
     # config.per_prompt_stat_tracking = ml_collections.ConfigDict()
+    per_prompt_stat_tracking: bool = True
     # number of reward values to store in the buffer for each prompt. the buffer persists across epochs.
     per_prompt_stat_tracking_buffer_size: int = 16
     # the minimum number of reward values to store in the buffer before using the per-prompt mean and std. if the buffer
