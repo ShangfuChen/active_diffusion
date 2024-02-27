@@ -132,7 +132,7 @@ def verify_or_write_config(cfg: TrainerConfig):
 ###### PickScore helpers ######
 
 ###### Main training loop ######
-@hydra.main(version_base=None, config_path="../conf", config_name="config")
+@hydra.main(version_base=None, config_path="PickScore/trainer/conf", config_name="config")
 def main(cfg: TrainerConfig) -> None:
     print("-"*50)
     print("Config", cfg)
@@ -586,7 +586,6 @@ def train_ddpo(config):
 
         ################## Update RM and Calculate Rewards ##################
         samples = {k: torch.cat([s[k] for s in samples]) for k in samples[0].keys()}
-        breakpoint() 
         # TODO - call train_reward_model here
 
 

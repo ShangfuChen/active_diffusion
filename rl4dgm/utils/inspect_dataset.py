@@ -51,12 +51,6 @@ def check_data(datafile_path):
     trainset = dataset["train"]
     features = trainset.features
 
-    # for key in features:
-    #     print("\nEntry: ", key)
-    #     print("Match 1: ", type(features[key]) == type(myfeatures[key]))
-    #     if type(features[key]) == Value:
-    #         print("Match 2: ", features[key].dtype == myfeatures[key].dtype)
-
     for split in mydataset.keys():
         print("="*50)
         print("Split: ", split)
