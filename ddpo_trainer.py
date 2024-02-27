@@ -662,4 +662,4 @@ class DDPOTrainer:
         if epoch != 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
             self.accelerator.save_state()
 
-        return global_step
+        return epoch
