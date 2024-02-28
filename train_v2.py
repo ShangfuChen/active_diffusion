@@ -45,8 +45,15 @@ def main(cfg: TrainerConfig) -> None:
 
     ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger)
 
-    samples = ddpo_trainer.sample(logger=logger, reward_model=reward_model, processor=processor)
-    global_step = ddpo_trainer.train(logger=logger, epoch=0)
+    for epoch in range(5):
+        print("Loop epoch ", epoch)
+        samples = ddpo_trainer.sample(logger=logger, epoch=epoch, reward_model=reward_model, processor=processor)
+
+        # Call active query and feedback interface, save new dataset
+
+        # Call reward model train()
+
+        ddpo_trainer.train(logger=logger, epoch=epoch, reward_model=reward_model, processor=processor)
 
 if __name__ == "__main__":
     # app.run(main)

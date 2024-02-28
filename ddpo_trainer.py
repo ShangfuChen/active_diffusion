@@ -1,34 +1,3 @@
-"""
-Functions :
-- initialize
-- sample() --> samples
-- train(samples, rewards, prompt, accelerator, optimizer, dataloaders)
-
-
-attributes:
-- accelerator
-- num_train_timesteps
-- pipeline
-- unet
-- optimizer
-- executor
-- samples_per_epoch
-- total_train_batch_size
-- sample_neg_prompt_embeds
-- train_neg_prompt_embeds
-- prompt_fn
-- reward_fn
-- stat_tracker
-- config
-
-
-TODO
-- reward_fn and prompt_fn definition
-- do we need to overwrite samples with new rewards?
-- samples generated is dict?
-- define global step
-"""
-
 
 
 from collections import defaultdict
@@ -272,8 +241,7 @@ class DDPOTrainer:
         self.train_neg_prompt_embeds = neg_prompt_embed.repeat(config.train_batch_size, 1, 1)
 
         # initialize stat tracker - TODO missing entry in config
-        # if config.per_prompt_stat_tracking:
-        if True:
+        if config.per_prompt_stat_tracking:
             self.stat_tracker = PerPromptStatTracker(
                 config.per_prompt_stat_tracking_buffer_size,
                 config.per_prompt_stat_tracking_min_count,
@@ -285,10 +253,8 @@ class DDPOTrainer:
         # self.autocast = accelerator.autocast
 
         # Prepare everything with our `accelerator`.
-        # TODO - below line throws error about double-defining optimizer in code and config
-        # using second line throws error about CUDA_HOME environment variable not being set
+        # TODO - below line throws error about double-defining optimizer in code and config --> deepspeed issue: to be solved
         self.unet, self.optimizer = self.accelerator.prepare(unet, optimizer) 
-        # unet = self.accelerator.prepare(unet) 
 
         # executor to perform callbacks asynchronously. this is beneficial for the llava callbacks which makes a request to a
         # remote server running llava inference.
@@ -319,17 +285,14 @@ class DDPOTrainer:
         if self.config.resume_from:
             logger.info(f"Resuming from {self.config.resume_from}")
             self.accelerator.load_state(self.config.resume_from)
-            self.first_epoch = int(self.config.resume_from.split("_")[-1]) + 1 # TODO this entry missing from config?
-        else:
-            self.first_epoch = 0
 
-        # TODO - think about this
+        self.global_step = 0
 
         # set up tqdm
         self.tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
 
     
-    def sample(self, logger, reward_model, processor):
+    def sample(self, logger, reward_model, processor, epoch):
         # TODO logger
 
         self.pipeline.unet.eval()
@@ -337,7 +300,7 @@ class DDPOTrainer:
         self.prompts = []
         for i in self.tqdm(
             range(self.config.sample_num_batches_per_epoch),
-            # desc=f"Epoch {epoch}: sampling", # TODO
+            desc=f"Epoch {epoch}: sampling", # TODO
             disable=not self.accelerator.is_local_main_process,
             position=0,
         ):
@@ -379,22 +342,7 @@ class DDPOTrainer:
                 self.config.sample_batch_size, 1
             )  # (batch_size, num_steps)
 
-            # compute rewards asynchronously
-            # other reward functions besides the pickscore
-            # rewards = self.executor.submit(self.reward_fn, images, prompts, prompt_metadata)
-            # TODO pass. Calculate rewards after pickscore model finetuning
-            self.rewards = self.executor.submit(self.reward_fn,
-                                      processor,
-                                      reward_model,
-                                      self.images,
-                                      self.prompts,
-                                      device=self.accelerator.device)
-            # TODO - filling reward with dummy values. overwrite reward after training 
-            # rewards = [0] * images.shape[0]
-            # rewards = torch.tensor((), dtype=torch.float64)
-            # rewards = rewards.new_zeros(size=[images.shape[0]])
-            # yield to to make sure reward computation starts
-            time.sleep(0)
+            # NOTE Reward computation is ommitted here. Reward computation with newest reward model is done in train()
 
             # store the list form to self.samples
             self.samples.append(
@@ -409,10 +357,38 @@ class DDPOTrainer:
                         :, 1:
                     ],  # each entry is the latent after timestep t
                     "log_probs": log_probs,
-                    "rewards": self.rewards,
+                    # "rewards": rewards, # this will be filled later in train()
                     "images": self.images,
                 }
             )
+
+        # return a dict form
+        samples = {k: torch.cat([s[k] for s in self.samples]) for k in self.samples[0].keys()} 
+
+        return samples
+
+
+    def train(self, reward_model, processor, logger, epoch):
+        # TODO logging
+
+        # Compute rewards using most recent reward model
+        for i in self.tqdm(
+            range(self.config.sample_num_batches_per_epoch),
+            desc=f"Epoch {epoch}: sampling", # TODO
+            disable=not self.accelerator.is_local_main_process,
+            position=0,
+        ):
+            rewards = self.executor.submit(self.reward_fn,
+                                      processor,
+                                      reward_model,
+                                      self.images,
+                                      self.prompts,
+                                      device=self.accelerator.device)
+            # yield to to make sure reward computation starts
+            time.sleep(0)
+    
+            self.samples[i]["rewards"] = rewards
+
         # wait for all rewards to be computed
         for sample in self.tqdm(
             self.samples,
@@ -420,34 +396,11 @@ class DDPOTrainer:
             disable=not self.accelerator.is_local_main_process,
             position=0,
         ):
-            self.rewards, reward_metadata = sample["rewards"].result()
+            rewards, reward_metadata = sample["rewards"].result()
             # accelerator.print(reward_metadata)
-            sample["rewards"] = torch.as_tensor(self.rewards, device=self.accelerator.device)
+            sample["rewards"] = torch.as_tensor(rewards, device=self.accelerator.device)
 
-        # return a dict form
-        self.samples = {k: torch.cat([s[k] for s in self.samples]) for k in self.samples[0].keys()} 
-
-        return self.samples
-
-
-    def train(self, logger, epoch):
-        # TODO logging
-
-        # # wait for all rewards to be computed
-        # for sample in self.tqdm(
-        #     self.samples,
-        #     desc="Waiting for rewards",
-        #     disable=not self.accelerator.is_local_main_process,
-        #     position=0,
-        # ):
-        #     rewards, reward_metadata = sample["rewards"].result()
-        #     # accelerator.print(reward_metadata)
-        #     sample["rewards"] = torch.as_tensor(rewards, device=self.accelerator.device)
-
-        # collate samples into dict where each entry has shape (num_batches_per_epoch * sample.batch_size, ...)
-        # samples = {k: torch.cat([s[k] for s in self.samples]) for k in self.samples[0].keys()} 
-        
-        global_step = 0
+        self.samples = {k: torch.cat([s[k] for s in self.samples]) for k in self.samples[0].keys()}
 
         # this is a hack to force wandb to log the images as JPEGs instead of PNGs
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -465,25 +418,25 @@ class DDPOTrainer:
                             caption=f"{prompt:.25} | {reward:.2f}",
                         )
                         for i, (prompt, reward) in enumerate(
-                            zip(self.prompts, self.rewards)
+                            zip(self.prompts, rewards)
                         )  # only log rewards from process 0
                     ],
                 },
-                step=global_step,
+                step=self.global_step,
             )
 
         # gather rewards across processes
-        self.rewards = self.accelerator.gather(self.samples["rewards"]).cpu().numpy()
+        rewards = self.accelerator.gather(self.samples["rewards"]).cpu().numpy()
 
         # log rewards and images
         self.accelerator.log(
             {
-                "reward": self.rewards,
+                "reward": rewards,
                 "epoch": epoch,
-                "reward_mean": self.rewards.mean(),
-                "reward_std": self.rewards.std(),
+                "reward_mean": rewards.mean(),
+                "reward_std": rewards.std(),
             },
-            step=global_step,
+            step=self.global_step,
         )
 
         # per-prompt mean/std tracking
@@ -493,9 +446,9 @@ class DDPOTrainer:
             prompts = self.pipeline.tokenizer.batch_decode(
                 prompt_ids, skip_special_tokens=True
             )
-            advantages = self.stat_tracker.update(prompts, self.rewards)
+            advantages = self.stat_tracker.update(prompts, rewards)
         else:
-            advantages = (self.rewards - self.rewards.mean()) / (self.rewards.std() + 1e-8)
+            advantages = (rewards - rewards.mean()) / (rewards.std() + 1e-8)
 
         # ungather advantages; we only need to keep the entries corresponding to the samples on this process
         self.samples["advantages"] = (
@@ -652,8 +605,8 @@ class DDPOTrainer:
                         info = {k: torch.mean(torch.stack(v)) for k, v in info.items()}
                         info = self.accelerator.reduce(info, reduction="mean")
                         info.update({"epoch": epoch, "inner_epoch": inner_epoch})
-                        self.accelerator.log(info, step=global_step)
-                        global_step += 1
+                        self.accelerator.log(info, step=self.global_step)
+                        self.global_step += 1
                         info = defaultdict(list)
 
             # make sure we did an optimization step at the end of the inner epoch
