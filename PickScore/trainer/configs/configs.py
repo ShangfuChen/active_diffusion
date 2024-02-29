@@ -76,8 +76,8 @@ def instantiate_with_cfg(cfg: DictConfig, **kwargs):
 
 
 defaults = [
-    # {"accelerator": "deepspeed"},
-    {"accelerator": "debug"},
+    {"accelerator": "deepspeed"},
+    # {"accelerator": "debug"},
     {"task": "clip"},
     {"model": "clip"},
     {"criterion": "clip"},

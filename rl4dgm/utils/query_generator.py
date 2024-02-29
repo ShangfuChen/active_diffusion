@@ -30,11 +30,11 @@ class QueryGenerator:
             # list out all images (dir/imgx.jpg format)
             img_paths = []
 
-            for img_dir in image_directories:
+            for img_dir in images:
                 img_names = os.listdir(img_dir)
                 img_paths += [os.path.join(img_dir, img_name) for img_name in img_names]
 
-            return query_function(images=img_paths, n_queries=n_queries)
+            return query_function(images=img_paths, n_queries=n_queries), img_paths
 
         elif type(images) == torch.Tensor:
 

@@ -416,7 +416,13 @@ class HumanFeedbackInterface(FeedbackInterface):
         n_options = 2 # TODO - hardcoded for now (only allow preference feedback)
         input_str = "-1"
         valid_options = np.arange(1, n_options + 1).tolist()
-        while int(input_str) not in valid_options:
+        while True:
+            try:
+                input_int = int(input_str)
+            except: 
+                input_str = input(f"Input is not an integer. Enter a number from 1 to {n_options} corresponding to the image that best matches the prompt.\n")
+            if input_int in valid_options:
+                break
             input_str = input(f"Enter a number from 1 to {n_options} corresponding to the image that best matches the prompt.\n")
 
         if input_str == "1":

@@ -50,9 +50,9 @@ class MetricMode(BaseEnum):
 class BaseAcceleratorConfig:
     _target_: str = "trainer.accelerators.base_accelerator.Accelerator"
     output_dir: str = II("output_dir")
-    # mixed_precision: PrecisionType = PrecisionType.NO
+    mixed_precision: PrecisionType = PrecisionType.NO # for original PickScore setting
     # Change to fp16 flag to fit ddpo setting
-    mixed_precision: str = "fp16"
+    # mixed_precision: str = "fp16" # for "debug" accelerator type
     gradient_accumulation_steps: int = 1
     log_with: Optional[LoggerType] = LoggerType.WANDB
     debug: DebugConfig = DebugConfig()

@@ -362,9 +362,8 @@ class DDPOTrainer:
                 }
             )
 
-        # return a dict form
-        samples = {k: torch.cat([s[k] for s in self.samples]) for k in self.samples[0].keys()} 
-
+        # return tensor of images
+        samples = torch.cat([sample["images"] for sample in self.samples])
         return samples
 
 
