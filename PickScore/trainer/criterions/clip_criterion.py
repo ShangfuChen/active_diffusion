@@ -127,11 +127,17 @@ class CLIPCriterion(_Loss):
             batch[self.cfg.pixels_0_column_name],
             batch[self.cfg.pixels_1_column_name]
         )
+        # handle case when not using deepspeed
+        try:
+            logit_scale = model.logit_scale
+        except:
+            logit_scale = model.module.logit_scale
         loss = self.calc_loss(
             text_features,
             image_0_features,
             image_1_features,
-            model.logit_scale.exp(),
+            # model.logit_scale.exp(),
+            logit_scale.exp(),
             batch[self.cfg.label_0_column_name],
             batch[self.cfg.label_1_column_name],
             batch[self.cfg.num_examples_per_prompt_column_name],

@@ -34,7 +34,7 @@ from PickScore.trainer.scripts.mystep_realtime import reward_model_setup, reward
 from omegaconf import DictConfig, OmegaConf
 
 class DDPOTrainer:
-    def __init__(self, config : DictConfig, logger):
+    def __init__(self, config : DictConfig, logger):#, dummy_loader):
         unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
         if not config.run_name:
             config.run_name = unique_id
@@ -64,15 +64,21 @@ class DDPOTrainer:
             total_limit=config.num_checkpoint_limit,
         )
 
+        os.environ["ACCELERATE_USE_DEEPSPEED"] = "false"
+        print("\nACCELERATE_USE_DEEPSPEED: ", os.environ.get("ACCELERATE_USE_DEEPSPEED"))
+        
+        # breakpoint()
+
         self.accelerator = Accelerator(
             log_with="wandb",
             mixed_precision=config.mixed_precision,
             project_config=accelerator_config,
+            deepspeed_plugin=None,
             # we always accumulate gradients across timesteps; we want config.train_gradient_accumulation_steps to be the
             # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
             # the total number of optimizer steps to accumulate across.
-            gradient_accumulation_steps=\
-            config.train_gradient_accumulation_steps*config.train_num_update)
+            gradient_accumulation_steps=config.train_gradient_accumulation_steps*config.train_num_update)
+
         if self.accelerator.is_main_process:
             self.accelerator.init_trackers(
                 project_name="active-diffusion",
@@ -240,7 +246,7 @@ class DDPOTrainer:
         self.sample_neg_prompt_embeds = neg_prompt_embed.repeat(config.sample_batch_size, 1, 1)
         self.train_neg_prompt_embeds = neg_prompt_embed.repeat(config.train_batch_size, 1, 1)
 
-        # initialize stat tracker - TODO missing entry in config
+        # initialize stat tracker
         if config.per_prompt_stat_tracking:
             self.stat_tracker = PerPromptStatTracker(
                 config.per_prompt_stat_tracking_buffer_size,
@@ -254,6 +260,10 @@ class DDPOTrainer:
 
         # Prepare everything with our `accelerator`.
         # TODO - below line throws error about double-defining optimizer in code and config --> deepspeed issue: to be solved
+        # breakpoint()
+        # dummy_loader.batch_size = config.trian_batch_size
+        # self.unet, self.optimizer, dummy_loader = self.accelerator.prepare(unet, optimizer, dummy_loader) 
+
         self.unet, self.optimizer = self.accelerator.prepare(unet, optimizer) 
 
         # executor to perform callbacks asynchronously. this is beneficial for the llava callbacks which makes a request to a
