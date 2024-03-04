@@ -6,6 +6,6 @@ dataset:
   batch_size: 4
 
 accelerator:
-  mixed_precision: BF16
-  # mixed_precision: "fp16" # for debug accelerator type
+  # mixed_precision: BF16
+  mixed_precision: "fp16" # for debug accelerator type
   project_name: reward_final

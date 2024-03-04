@@ -72,6 +72,8 @@ def _locate(path: str) -> Any:
 
 def instantiate_with_cfg(cfg: DictConfig, **kwargs):
     target = _locate(cfg._target_)
+    # print("target", target)s
+    # breakpoint()
     return target(cfg, **kwargs)
 
 

@@ -42,9 +42,9 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # dummy reward model
-    # processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
-    # processor = AutoProcessor.from_pretrained(processor_name_or_path)
-    # reward_model = AutoModel.from_pretrained(pretrained_model_name_or_path="yuvalkirstain/PickScore_v1").to("cuda").eval()
+    processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
+    processor = AutoProcessor.from_pretrained(processor_name_or_path)
+    reward_model = AutoModel.from_pretrained(pretrained_model_name_or_path="yuvalkirstain/PickScore_v1").to("cuda").eval()
     # reward_accelerator = instantiate_with_cfg(cfg.accelerator)
     # print("\nACCELERATE_USE_DEEPSPEED: ", os.environ.get("ACCELERATE_USE_DEEPSPEED"))
     # print("\nReward accelerator: ", reward_accelerator)
@@ -64,20 +64,21 @@ def main(cfg: TrainerConfig) -> None:
 
 
 
+    from PickScore.trainer.configs.configs import TrainerConfig, instantiate_with_cfg
+    ac = instantiate_with_cfg(cfg.accelerator)
 
-
-
-    # ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger)#, dummy_loader=dummy_loader)
-    reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger)
+    ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger, accelerator=ac.accelerator)#, dummy_loader=dummy_loader)
+    reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
     prompt = "a cute cat" # TODO - get from user input?
 
     for epoch in range(5):
         print("Loop epoch ", epoch)
-        # samples = ddpo_trainer.sample(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
-        samples = torch.Tensor()
-        samples = samples.new_zeros(size=[32,3,256,256])
-        reward_model_trainer.train(image_batch=samples, epoch=epoch, prompt=prompt)#, logger=logger)
-        # ddpo_trainer.train(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        samples = ddpo_trainer.sample(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        # dummy samples for PickScore testing
+        # samples = torch.Tensor()
+        # samples = samples.new_zeros(size=[32,3,256,256])
+        reward_model_trainer.train(image_batch=samples, epoch=epoch, prompt=prompt, logger=logger)
+        ddpo_trainer.train(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
 
 if __name__ == "__main__":
     # app.run(main)

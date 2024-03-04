@@ -36,10 +36,16 @@ from trainer.accelerators.utils import get_nvidia_smi_gpu_memory_stats_str, prin
 import math
 
 class PickScoreTrainer:
-    def __init__(self, cfg : DictConfig, logger):
+    def __init__(self, cfg : DictConfig, logger, accelerator=None):
         
-        self.accelerator = instantiate_with_cfg(cfg.accelerator)
-        print("\ninstantiate_with_cfg accelerator type", self.accelerator, type(self.accelerator))
+        """
+        Args:
+            cfg (DicstConfig) : config for PickScore training
+            logger (accelerate logging.logger) : logger to write logs to 
+            accelerator (accelerate.Accelerator) : If provided, use the provided accelerator. If not, initialize from config
+        """
+
+        self.accelerator = instantiate_with_cfg(cfg.accelerator) if accelerator is None else accelerator
 
         if cfg.debug.activate and self.accelerator.is_main_process:
             import pydevd_pycharm
@@ -65,10 +71,8 @@ class PickScoreTrainer:
         
         validloader = self.load_dataloaders(cfg.dataset, split="validation")
         
-        print("model type (before prepare): ", type(self.model))
         self.model, self.optimizer, self.lr_scheduler, validloader= self.accelerator.prepare(
             self.model, self.optimizer, self.lr_scheduler, validloader)
-        print("model type (after prepare): ", type(self.model))
 
         self.accelerator.load_state_if_needed()
         self.accelerator.init_training(cfg)
@@ -96,11 +100,10 @@ class PickScoreTrainer:
         self.split2dataloader = None
         self.cfg = cfg
 
-    def evaluate(self, ):
+    def evaluate(self, logger):
         self.model.eval()
         end_of_train_dataloader = self.accelerator.gradient_state.end_of_dataloader
-        print(f"*** Evaluating {self.cfg.dataset.valid_split_name} ***")
-        # logger.info(f"*** Evaluating {cfg.dataset.valid_split_name} ***")
+        logger.info(f"*** Evaluating {self.cfg.dataset.valid_split_name} ***")
         metrics = self.task.evaluate(self.model, self.criterion, self.split2dataloader[self.cfg.dataset.valid_split_name])
         self.accelerator.update_metrics(metrics)
         # accelerator.gradient_state.end_of_dataloader = end_of_train_dataloader
@@ -174,7 +177,9 @@ class PickScoreTrainer:
         #     raise ValueError(f"Config was not saved correctly - {yaml_path}")
         logger.info(f"Config can be found in {yaml_path}")
 
-    def train(self, image_batch, prompt, epoch):
+    def train(self, image_batch, prompt, epoch, logger):
+
+        # TODO - logging
 
         #######################################################
         ########### Active Query and Dataset Update ###########
@@ -231,7 +236,7 @@ class PickScoreTrainer:
 
                 if self.accelerator.should_eval():
                     # TODO - validation dataset can be accumulation of all previous human feedbacks?
-                    self.evaluate()
+                    self.evaluate(logger=logger)
 
                 if self.accelerator.should_save():
                     self.accelerator.save_checkpoint()
@@ -268,7 +273,7 @@ class PickScoreTrainer:
                 self.accelerator.lr = lr
 
                 if self.accelerator.should_end():
-                    self.evaluate()
+                    self.evaluate(logger=logger)
                     self.accelerator.save_checkpoint()
                     break
 

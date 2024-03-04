@@ -34,7 +34,7 @@ from PickScore.trainer.scripts.mystep_realtime import reward_model_setup, reward
 from omegaconf import DictConfig, OmegaConf
 
 class DDPOTrainer:
-    def __init__(self, config : DictConfig, logger):#, dummy_loader):
+    def __init__(self, config : DictConfig, logger, accelerator=None):#, dummy_loader):
         unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
         if not config.run_name:
             config.run_name = unique_id
@@ -68,16 +68,17 @@ class DDPOTrainer:
         print("\nACCELERATE_USE_DEEPSPEED: ", os.environ.get("ACCELERATE_USE_DEEPSPEED"))
         
         # breakpoint()
-
-        self.accelerator = Accelerator(
-            log_with="wandb",
-            mixed_precision=config.mixed_precision,
-            project_config=accelerator_config,
-            deepspeed_plugin=None,
-            # we always accumulate gradients across timesteps; we want config.train_gradient_accumulation_steps to be the
-            # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
-            # the total number of optimizer steps to accumulate across.
-            gradient_accumulation_steps=config.train_gradient_accumulation_steps*config.train_num_update)
+        if accelerator is None:
+            self.accelerator = Accelerator(
+                log_with="wandb",
+                mixed_precision=config.mixed_precision,
+                project_config=accelerator_config,
+                # we always accumulate gradients across timesteps; we want config.train_gradient_accumulation_steps to be the
+                # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
+                # the total number of optimizer steps to accumulate across.
+                gradient_accumulation_steps=config.train_gradient_accumulation_steps*config.train_num_update)
+        else:
+            self.accelerator = accelerator
 
         if self.accelerator.is_main_process:
             self.accelerator.init_trackers(
