@@ -44,10 +44,18 @@ class CLIPTask(BaseTask):
 
     @staticmethod
     def features2probs(model, text_features, image_0_features, image_1_features):
-        image_0_scores = model.logit_scale.exp() * torch.diag(
-            torch.einsum('bd,cd->bc', text_features, image_0_features))
-        image_1_scores = model.logit_scale.exp() * torch.diag(
-            torch.einsum('bd,cd->bc', text_features, image_1_features))
+        try: 
+            image_0_scores = model.logit_scale.exp() * torch.diag(
+                torch.einsum('bd,cd->bc', text_features, image_0_features))
+            image_1_scores = model.logit_scale.exp() * torch.diag(
+                torch.einsum('bd,cd->bc', text_features, image_1_features))
+        # case for not using deepspeed
+        except:
+            image_0_scores = model.module.logit_scale.exp() * torch.diag(
+                torch.einsum('bd,cd->bc', text_features, image_0_features))
+            image_1_scores = model.module.logit_scale.exp() * torch.diag(
+                torch.einsum('bd,cd->bc', text_features, image_1_features))
+
         scores = torch.stack([image_0_scores, image_1_scores], dim=-1)
         probs = torch.softmax(scores, dim=-1)
         image_0_probs, image_1_probs = probs[:, 0], probs[:, 1]

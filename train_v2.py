@@ -68,7 +68,6 @@ def main(cfg: TrainerConfig) -> None:
 
 
     # ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger)#, dummy_loader=dummy_loader)
-    # breakpoint()
     reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger)
     prompt = "a cute cat" # TODO - get from user input?
 

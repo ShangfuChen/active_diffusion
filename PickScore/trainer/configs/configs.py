@@ -76,14 +76,16 @@ def instantiate_with_cfg(cfg: DictConfig, **kwargs):
 
 
 defaults = [
-    {"accelerator": "deepspeed"},
-    # {"accelerator": "debug"},
+    # {"accelerator": "deepspeed"},
+    {"accelerator": "debug"},
     {"task": "clip"},
     {"model": "clip"},
     {"criterion": "clip"},
     {"dataset": "my_dataset"},
-    {"optimizer": "dummy"},
-    {"lr_scheduler": "dummy"},
+    # {"optimizer": "dummy"},
+    {"optimizer": "adamw"},
+    # {"lr_scheduler": "dummy"},
+    {"lr_scheduler": "constant_with_warmup"},
     {"ddpo_conf": "ddpo_train"},
 ]
 

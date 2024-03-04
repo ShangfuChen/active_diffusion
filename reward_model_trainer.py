@@ -38,15 +38,19 @@ import math
 class PickScoreTrainer:
     def __init__(self, cfg : DictConfig, logger):
         
-        # self.accelerator = instantiate_with_cfg(cfg.accelerator)
-        self.accelerator = Accelerator(
-            gradient_accumulation_steps=cfg.accelerator.gradient_accumulation_steps,
-            mixed_precision=cfg.accelerator.mixed_precision,
-            log_with=cfg.accelerator.log_with,
-            project_dir=cfg.accelerator.output_dir,
-            dynamo_backend=cfg.accelerator.dynamo_backend,
-        )
-        print("\nDistributed type: ", self.accelerator.distributed_type)
+        self.accelerator = instantiate_with_cfg(cfg.accelerator)
+        print("\ninstantiate_with_cfg accelerator type", self.accelerator, type(self.accelerator))
+        # breakpoint()
+        # self.accelerator = Accelerator(
+        #     gradient_accumulation_steps=cfg.accelerator.gradient_accumulation_steps,
+        #     mixed_precision=cfg.accelerator.mixed_precision,
+        #     log_with=cfg.accelerator.log_with,
+        #     project_dir=cfg.accelerator.output_dir,
+        #     dynamo_backend=cfg.accelerator.dynamo_backend,
+        # )
+        # print("accelerator type", self.accelerator, type(self.accelerator))
+        # breakpoint()
+        # print("\nDistributed type: ", self.accelerator.distributed_type)
 
         if cfg.debug.activate and self.accelerator.is_main_process:
             import pydevd_pycharm
@@ -66,7 +70,7 @@ class PickScoreTrainer:
         
         logger.info(f"Loading optimizer")
         self.optimizer = self.load_optimizer(cfg.optimizer, self.model)
-        
+
         logger.info(f"Loading lr scheduler")
         self.lr_scheduler = self.load_scheduler(cfg.lr_scheduler, self.optimizer)
         
@@ -77,23 +81,15 @@ class PickScoreTrainer:
             self.model, self.optimizer, self.lr_scheduler, validloader)
         print("model type (after prepare): ", type(self.model))
 
-        #####################
-        # split2dataloader = self.load_dataloaders(cfg.dataset)
-        # dataloaders = list(split2dataloader.values())
-        # self.model, self.optimizer, self.lr_scheduler, *dataloaders = self.accelerator.prepare(self.model, self.optimizer, self.lr_scheduler, *dataloaders)
-        # self.split2dataloader = dict(zip(split2dataloader.keys(), dataloaders))
-        # self.dataloaders = dataloaders
-        #####################
-
-        # self.accelerator.load_state_if_needed()
+        self.accelerator.load_state_if_needed()
 
         # self.accelerator.recalc_train_length_after_prepare(len(split2dataloader[cfg.dataset.train_split_name]))
 
-        # self.accelerator.init_training(cfg)
-        if self.accelerator.is_main_process:
-            yaml = OmegaConf.to_yaml(cfg.accelerator, resolve=True, sort_keys=True)
-            log_cfg = _flatten_dict(OmegaConf.create(yaml))
-            self.accelerator.init_trackers(cfg.accelerator.project_name, log_cfg)
+        self.accelerator.init_training(cfg)
+        # if self.accelerator.is_main_process:
+        #     yaml = OmegaConf.to_yaml(cfg.accelerator, resolve=True, sort_keys=True)
+        #     log_cfg = _flatten_dict(OmegaConf.create(yaml))
+        #     self.accelerator.accelerator.init_trackers(cfg.accelerator.project_name, log_cfg)
 
         processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
         self.processor = AutoProcessor.from_pretrained(processor_name_or_path)
@@ -115,6 +111,15 @@ class PickScoreTrainer:
         os.makedirs(self.dataset_save_path, exist_ok=False)
 
         self.cfg = cfg
+
+    def evaluate(self, split2dataloader):
+        self.model.eval()
+        end_of_train_dataloader = self.accelerator.gradient_state.end_of_dataloader
+        print(f"*** Evaluating {self.cfg.dataset.valid_split_name} ***")
+        # logger.info(f"*** Evaluating {cfg.dataset.valid_split_name} ***")
+        metrics = self.task.evaluate(self.model, self.criterion, split2dataloader[self.cfg.dataset.valid_split_name])
+        self.accelerator.update_metrics(metrics)
+        # accelerator.gradient_state.end_of_dataloader = end_of_train_dataloader
 
     def reinitialize_trainloader(self, cfg: DictConfig) -> Any:
         dataset = instantiate_with_cfg(cfg, split="train")
@@ -158,7 +163,10 @@ class PickScoreTrainer:
             )
 
     def load_optimizer(self, cfg: DictConfig, model: nn.Module):
-        optimizer = instantiate(cfg, model=model)
+        if cfg._target_ == "torch.optim.adamw.AdamW":
+            optimizer = instantiate(config=cfg, params=model.parameters())
+        else:
+            optimizer = instantiate(cfg, model=model)
         return optimizer
 
     def load_scheduler(self, cfg: DictConfig, optimizer):
@@ -201,7 +209,7 @@ class PickScoreTrainer:
             query_indices=queries,
         )
 
-        # Save new dataset and reinitialize dataloaders
+        # Save new dataset and reinitialize dataloaders - TODO
         self.feedback_interface.save_dataset(dataset_save_path=os.path.join(self.dataset_save_path, f"epoch{epoch}.parquet"))
         self.feedback_interface.save_dataset(dataset_save_path="rl4dgm/my_dataset/my_dataset_train.parquet") 
 
@@ -218,14 +226,14 @@ class PickScoreTrainer:
         }
         dataloaders = list(split2dataloader.values())
 
-        # self.accelerator.recalc_train_length_after_prepare(len(split2dataloader[self.cfg.dataset.train_split_name]))
-        num_batches = len(split2dataloader[self.cfg.dataset.train_split_name])
-        num_update_steps_per_epoch = math.ceil(num_batches / self.cfg.accelerator.gradient_accumulation_steps)
-        if self.cfg.accelerator.max_steps is None:
-            self.cfg.accelerator.max_steps = self.cfg.accelerator.num_epochs * num_update_steps_per_epoch
+        self.accelerator.recalc_train_length_after_prepare(len(split2dataloader[self.cfg.dataset.train_split_name]))
+        # num_batches = len(split2dataloader[self.cfg.dataset.train_split_name])
+        # num_update_steps_per_epoch = math.ceil(num_batches / self.cfg.accelerator.gradient_accumulation_steps)
+        # if self.cfg.accelerator.max_steps is None:
+        #     self.cfg.accelerator.max_steps = self.cfg.accelerator.num_epochs * num_update_steps_per_epoch
         # self.num_update_steps_per_epoch = num_update_steps_per_epoch
         # self.num_steps_per_epoch = num_batches
-        self.cfg.accelerator.num_epochs = math.ceil(self.cfg.accelerator.max_steps / num_update_steps_per_epoch)
+        # self.cfg.accelerator.num_epochs = math.ceil(self.cfg.accelerator.max_steps / num_update_steps_per_epoch)
 
 
         #######################################################
@@ -238,19 +246,19 @@ class PickScoreTrainer:
             print("Epoch ", inner_epoch)
             for step, batch in enumerate(split2dataloader[self.cfg.dataset.train_split_name]):
                 # TODO
-                # if self.accelerator.should_skip(inner_epoch, step):
-                #     self.accelerator.update_progbar_step()
-                #     continue
+                if self.accelerator.should_skip(inner_epoch, step):
+                    self.accelerator.update_progbar_step()
+                    continue
 
-                # if self.accelerator.should_eval():
-                #     pass
-                #     # TODO where should eval() be defined? 
-                #     # validation dataset can be accumulation of all previous human feedbacks?
-                #     # evaluate()
+                if self.accelerator.should_eval():
+                    # pass
+                    # TODO where should eval() be defined? 
+                    # validation dataset can be accumulation of all previous human feedbacks?
+                    self.evaluate(split2dataloader)
 
                 # TODO
-                # if self.accelerator.should_save():
-                #     self.accelerator.save_checkpoint()
+                if self.accelerator.should_save():
+                    self.accelerator.save_checkpoint()
 
                 self.model.train()
 
@@ -260,54 +268,42 @@ class PickScoreTrainer:
 
                     self.accelerator.backward(loss)
                     if self.accelerator.sync_gradients:
-                        # self.accelerator.clip_grad_norm_(self.model.parameters())
-                        self.accelerator.clip_grad_norm_(self.model.parameters(), self.cfg.accelerator.max_grad_norm)
+                        self.accelerator.clip_grad_norm_(self.model.parameters())
 
                     # NOTE: default optimizer and lr_scheduler are dummy, which gets wrapped with DeepSpeedOptimizerWrapper and DeepSpeedSchedulerWrapper.
                     # wrapper's step functions do nothing (pass)
+                    # TODO - is this necessary now that deepspeed is removed?
 
-                    # self.optimizer.step()
-                    # self.lr_scheduler.step()
-                    # self.optimizer.zero_grad()
+                    self.optimizer.step()
+                    self.lr_scheduler.step()
+                    self.optimizer.zero_grad()
 
                 # train_loss += avg_loss / self.accelerator.cfg.gradient_accumulation_steps
                 train_loss += avg_loss / self.cfg.accelerator.gradient_accumulation_steps
 
                 # TODO
-                # if self.accelerator.sync_gradients:
-                #     self.accelerator.update_global_step(train_loss)
-                #     train_loss = 0.0
+                if self.accelerator.sync_gradients:
+                    self.accelerator.update_global_step(train_loss)
+                    train_loss = 0.0
 
-                # # if self.accelerator.global_step > 0:
-                # if self.global_step > 0:
-                #     try:
-                #         lr = lr_scheduler.get_last_lr()[0]
-                #     except:
-                #         print("get_last_lr exception. Setting lr=0.0")
-                #         lr = 0.0
+                if self.accelerator.global_step > 0:
+                    try:
+                        lr = lr_scheduler.get_last_lr()[0]
+                    except:
+                        print("get_last_lr exception. Setting lr=0.0")
+                        lr = 0.0
 
                 self.accelerator.step += 1
                 self.accelerator.lr = lr
 
-            #     if self.accelerator.should_end():
-            #         evaluate()
-            #         self.accelerator.save_checkpoint()
-            #         break
+                if self.accelerator.should_end():
+                    evaluate()
+                    self.accelerator.save_checkpoint()
+                    break
 
-            # if self.accelerator.should_end():
-            #     break
+            if self.accelerator.should_end():
+                break
 
-            # self.accelerator.update_epoch()
+            self.accelerator.update_epoch()
 
         self.accelerator.wait_for_everyone()
-
-    """
-    Accelerator utility functions
-    """
-    def _accelerator_recalc_train_length_after_prepare(self, num_batches):
-        num_update_steps_per_epoch = math.ceil(num_batches / self.cfg.accelerator.gradient_accumulation_steps)
-        if self.cfg.accelerator.max_steps is None:
-            self.cfg.accelerator.max_steps = self.cfg.accelerator.num_epochs * num_update_steps_per_epoch
-        self.num_update_steps_per_epoch = num_update_steps_per_epoch
-        self.num_steps_per_epoch = num_batches
-        self.cfg.num_epochs = math.ceil(self.cfg.max_steps / num_update_steps_per_epoch)
