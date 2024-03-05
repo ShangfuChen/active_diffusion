@@ -106,8 +106,8 @@ class CLIPTask(BaseTask):
         eval_dict = self.run_inference(model, criterion, dataloader)
         eval_dict = self.gather_dict(eval_dict)
         metrics = {
-            "accuracy": sum(eval_dict["is_correct"]) / len(eval_dict["is_correct"]),
-            "num_samples": len(eval_dict["is_correct"])
+            "reward_accuracy": sum(eval_dict["is_correct"]) / len(eval_dict["is_correct"]),
+            # "num_samples": len(eval_dict["is_correct"])
         }
         if LoggerType.WANDB == self.accelerator.cfg.log_with:
             self.log_to_wandb(eval_dict)

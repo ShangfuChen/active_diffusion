@@ -257,7 +257,6 @@ class PickScoreTrainer:
 
                 # train_loss += avg_loss / self.accelerator.cfg.gradient_accumulation_steps
                 train_loss += avg_loss / self.cfg.accelerator.gradient_accumulation_steps
-
                 if self.accelerator.sync_gradients:
                     self.accelerator.update_global_step(train_loss)
                     train_loss = 0.0

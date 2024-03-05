@@ -217,11 +217,11 @@ class BaseAccelerator(abc.ABC):
     def update_global_step(self, loss):
         self.global_step += 1
         self.log({
-            "lr": self.lr,
-            "step": self.step,
-            "epoch": self.epoch,
-            "global_step": self.global_step,
-            "loss": loss,
+            "reward_lr": self.lr,
+            "reward_step": self.step,
+            "reward_epoch": self.epoch,
+            "reward_global_step": self.global_step,
+            "reward_loss": loss,
         })
 
     def get_allocated_cuda_memory(self):

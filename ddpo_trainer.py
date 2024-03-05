@@ -443,10 +443,9 @@ class DDPOTrainer:
         # log rewards and images
         self.accelerator.log(
             {
-                "reward": rewards,
-                "epoch": epoch,
-                "reward_mean": rewards.mean(),
-                "reward_std": rewards.std(),
+                "ddpo_epoch": epoch,
+                "ddpo_reward_mean": rewards.mean(),
+                "ddpo_reward_std": rewards.std(),
             },
             step=self.global_step,
         )
@@ -573,7 +572,7 @@ class DDPOTrainer:
                             self.config.train_adv_clip_max,
                         )
                         ratio = torch.exp(log_prob - sample["log_probs"][:, j])
-                        info["ratio"].append(ratio)
+                        info["ddpo_ratio"].append(ratio)
                         unclipped_loss = -advantages * ratio
                         clipped_loss = -advantages * torch.clamp(
                             ratio,
@@ -586,18 +585,18 @@ class DDPOTrainer:
                         # John Schulman says that (ratio - 1) - log(ratio) is a better
                         # estimator, but most existing code uses this so...
                         # http://joschu.net/blog/kl-approx.html
-                        info["approx_kl"].append(
+                        info["ddpo_approx_kl"].append(
                             0.5
                             * torch.mean((log_prob - sample["log_probs"][:, j]) ** 2)
                         )
-                        info["clipfrac"].append(
+                        info["ddpo_clipfrac"].append(
                             torch.mean(
                                 (
                                     torch.abs(ratio - 1.0) > self.config.train_clip_range
                                 ).float()
                             )
                         )
-                        info["loss"].append(loss)
+                        info["ddpo_loss"].append(loss)
 
                         # backward pass
                         self.accelerator.backward(loss)
@@ -616,7 +615,7 @@ class DDPOTrainer:
                         # log training-related stuff
                         info = {k: torch.mean(torch.stack(v)) for k, v in info.items()}
                         info = self.accelerator.reduce(info, reduction="mean")
-                        info.update({"epoch": epoch, "inner_epoch": inner_epoch})
+                        info.update({"ddpo_epoch": epoch, "ddpo_inner_epoch": inner_epoch})
                         self.accelerator.log(info, step=self.global_step)
                         self.global_step += 1
                         info = defaultdict(list)
