@@ -73,7 +73,9 @@ def main(cfg: TrainerConfig) -> None:
 
     for epoch in range(5):
         print("Loop epoch ", epoch)
-        samples = ddpo_trainer.sample(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        breakpoint()
+        
         # dummy samples for PickScore testing
         # samples = torch.Tensor()
         # samples = samples.new_zeros(size=[32,3,256,256])
