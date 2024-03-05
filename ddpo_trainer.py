@@ -318,7 +318,7 @@ class DDPOTrainer:
             position=0,
         ):
             # generate prompts
-            self.prompts, prompt_metadata = zip(
+            prompts, prompt_metadata = zip(
                 *[
                     self.prompt_fn()
                     for _ in range(self.config.sample_batch_size)
@@ -327,7 +327,7 @@ class DDPOTrainer:
 
             # encode prompts
             prompt_ids = self.pipeline.tokenizer(
-                self.prompts,
+                prompts,
                 return_tensors="pt",
                 padding="max_length",
                 truncation=True,
@@ -337,7 +337,7 @@ class DDPOTrainer:
 
             # sample
             with self.autocast():
-                self.images, _, latents, log_probs = pipeline_with_logprob(
+                images, _, latents, log_probs = pipeline_with_logprob(
                     self.pipeline,
                     prompt_embeds=prompt_embeds,
                     negative_prompt_embeds=self.sample_neg_prompt_embeds,
@@ -371,9 +371,10 @@ class DDPOTrainer:
                     ],  # each entry is the latent after timestep t
                     "log_probs": log_probs,
                     # "rewards": rewards, # this will be filled later in train()
-                    "images": self.images,
+                    "images": images,
                 }
             )
+            self.prompts.append(prompts)
 
         # return tensor of images
         samples = torch.cat([sample["images"] for sample in self.samples])
@@ -393,8 +394,8 @@ class DDPOTrainer:
             rewards = self.executor.submit(self.reward_fn,
                                       processor,
                                       reward_model,
-                                      self.images,
-                                      self.prompts,
+                                      self.samples[i]["images"],
+                                      self.prompts[i],
                                       device=self.accelerator.device)
             # yield to to make sure reward computation starts
             time.sleep(0)
@@ -416,7 +417,7 @@ class DDPOTrainer:
 
         # this is a hack to force wandb to log the images as JPEGs instead of PNGs
         with tempfile.TemporaryDirectory() as tmpdir:
-            for i, image in enumerate(self.images):
+            for i, image in enumerate(self.samples["images"][-self.config.sample_batch_size:]):
                 pil = Image.fromarray(
                     (image.cpu().numpy().transpose(1, 2, 0) * 255).astype(np.uint8)
                 )
@@ -430,7 +431,7 @@ class DDPOTrainer:
                             caption=f"{prompt:.25} | {reward:.2f}",
                         )
                         for i, (prompt, reward) in enumerate(
-                            zip(self.prompts, rewards)
+                            zip(self.prompts[-1], rewards)
                         )  # only log rewards from process 0
                     ],
                 },
