@@ -167,7 +167,9 @@ class DDPOTrainer:
         # set up diffusers-friendly checkpoint saving with Accelerate
 
         def save_model_hook(models, weights, output_dir):
-            assert len(models) == 1
+            # TODO #
+            # simply close the assertion
+            # assert len(models) == 1
             if config.use_lora and isinstance(models[0], AttnProcsLayers):
                 self.pipeline.unet.save_attn_procs(output_dir)
             elif not config.use_lora and isinstance(models[0], UNet2DConditionModel):

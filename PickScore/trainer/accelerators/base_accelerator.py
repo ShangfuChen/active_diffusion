@@ -57,8 +57,9 @@ class BaseAcceleratorConfig:
     log_with: Optional[LoggerType] = LoggerType.WANDB
     debug: DebugConfig = DebugConfig()
     seed: int = 42
-    resume_from_checkpoint: bool = True
-    max_steps: int = 500
+    # resume_from_checkpoint: bool = True
+    resume_from_checkpoint: bool = False
+    max_steps: int = 10
     num_epochs: int = 10
     validate_steps: int = 100
     eval_on_start: bool = True
