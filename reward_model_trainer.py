@@ -188,7 +188,7 @@ class PickScoreTrainer:
             queries, query_prompts = self.query_generator.generate_queries(
                 images=image_batch,
                 query_algorithm="random", # TODO - add to config
-                n_queries=30, # TODO - add to config
+                n_queries=1, # TODO - add to config
                 prompts=prompts,
             )
 
@@ -219,9 +219,6 @@ class PickScoreTrainer:
             "validation" : validloader,
         }
         dataloaders = list(self.split2dataloader.values())
-
-        self.accelerator.recalc_train_length_after_prepare(len(self.split2dataloader[self.cfg.dataset.train_split_name]))
-
         #######################################################
         ################ Reward Model Training ################
         #######################################################
@@ -229,12 +226,7 @@ class PickScoreTrainer:
 
         train_loss, lr = 0.0, 0.0
         for inner_epoch in range(self.cfg.accelerator.num_epochs): # TODO config should have something like reward epochs per loop
-            # print("Epoch ", inner_epoch)
             for step, batch in enumerate(self.split2dataloader[self.cfg.dataset.train_split_name]):
-                if self.accelerator.should_skip(inner_epoch, step):
-                    self.accelerator.update_progbar_step()
-                    continue
-
                 if self.accelerator.should_eval():
                     # TODO - validation dataset can be accumulation of all previous human feedbacks?
                     self.evaluate(logger=logger)
@@ -269,13 +261,12 @@ class PickScoreTrainer:
                         print("get_last_lr exception. Setting lr=0.0")
                         lr = 0.0
 
-                self.accelerator.step += 1
                 self.accelerator.lr = lr
-
                 if self.accelerator.should_end():
                     self.evaluate(logger=logger)
                     self.accelerator.save_checkpoint()
                     break
+                self.accelerator.step += 1
 
             if self.accelerator.should_end():
                 break
