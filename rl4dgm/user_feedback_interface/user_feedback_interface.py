@@ -77,19 +77,19 @@ class FeedbackInterface:
         # append query + feedback to self.df
         self._store_feedback(feedback, img_paths, prompt)
 
-    def query_batch(self, prompt, image_batch, query_indices, **kwargs):
+    def query_batch(self, prompts, image_batch, query_indices, **kwargs):
         """
         Version of query() that takes a batch of images in the form of tensor (B x C x H x W),
         and a list of index-pairs to query
 
         Args:
-            prompt (str) : prompt
+            prompts (list(str)) : list of prompts corresponding to images in image_batch
             image_batch (Tensor) : (B x C x H x W) tensor of images
             query_indices (list(list(int))) : list of queries where each entry is [idx0, idx1] of images to query
         """
-        prompt = self._process_prompt(prompt)
+        prompts = self._process_prompts(prompts=prompts)
 
-        for query in query_indices:
+        for query, prompt in zip(query_indices, prompts):
             # Get query images in PIL format 
             idx0, idx1 = query
             im0 = to_pil_image(image_batch[idx0])
@@ -101,7 +101,6 @@ class FeedbackInterface:
                 prompt=prompt,
                 img_save_path="query_image.png",
             )
-
             # Get feedback
             feedback = self._get_feedback(prompt=prompt, images=[im0, im1])
 
@@ -177,18 +176,24 @@ class FeedbackInterface:
 
         return images
     
-    def _process_prompt(self, prompt):
+    def _process_prompts(self, prompts):
         """
         Confirms that the prompt is valid.
 
         Args:
-            prompt (str) : prompt for the query
+            prompts (str, list(str) or list(tuple(str))) : prompts for the query
         
         Returns:
-            prompt (str) : original prompt
+            prompts (list(str)) : original prompts in a single list 
         """
-        assert len(prompt) > 0, "Prompt cannot be an empty string."
-        return prompt
+        if type(prompts) == str:
+            prompts = [prompts]
+        elif type(prompts[0]) == tuple:
+            prompts = [list(tup) for tup in prompts]
+            prompts = [prompt for sublist in prompts for prompt in sublist]
+        for prompt in prompts:
+            assert len(prompt) > 0, "Prompt cannot be an empty string."
+        return prompts
 
     def _save_query_image(self, images, prompt, img_save_path): # TODO
         """
@@ -304,48 +309,6 @@ class FeedbackInterface:
             ranking_id, user_id, num_example_per_prompt,
         ]
     
-
-    # def _store_feedback(self, feedback, img_paths, prompt):
-    #     """
-    #     Adds feedback to self.df
-
-    #     Args:
-    #         img_paths (list(str)) : list of paths to images included in this query
-    #         feedback (tuple(float)) : feedback provided by the user (label0, label1)
-    #         prompt (str) : text prompt
-    #     """
-
-    #     # TODO currently only supports binary feedback preference
-    #     are_different = not img_paths[0] == img_paths[1]
-    #     best_image_uid = ""
-    #     created_at = datetime.now()
-    #     has_label = True
-    #     image_0_uid = "0"
-    #     image_0_url = ""
-    #     image_1_uid = "1"
-    #     image_1_url = ""
-        
-    #     with open(img_paths[0], "rb") as img0:
-    #         jpg_0 = img0.read()
-
-    #     with open(img_paths[1], "rb") as img1:
-    #         jpg_1 = img1.read()
-            
-    #     # TODO - there is no option for "no preference"
-    #     label0, label1 = feedback
-    #     model0 = ""
-    #     model1 = ""
-    #     ranking_id = 0
-    #     user_id = 0
-    #     num_example_per_prompt = 1
-        
-    #     self.df.loc[len(self.df.index)] = [
-    #         are_different, best_image_uid, prompt, created_at, has_label,
-    #         image_0_uid, image_0_url, image_1_uid, image_1_url,
-    #         jpg_0, jpg_1,
-    #         label0, label1, model0, model1,
-    #         ranking_id, user_id, num_example_per_prompt,
-    #     ]
     
 class AIFeedbackInterface(FeedbackInterface):
     """
@@ -413,7 +376,7 @@ class HumanFeedbackInterface(FeedbackInterface):
         Returns:
             feedback (tuple(float)) : (label0, label1) indicating which image was choosen by user
         """
-        n_options = 2 # TODO - hardcoded for now (only allow preference feedback)
+        n_options = 2 # TODO - hardcoded for now (only allow binary preference feedback)
         input_str = "-1"
         valid_options = np.arange(1, n_options + 1).tolist()
         while True:

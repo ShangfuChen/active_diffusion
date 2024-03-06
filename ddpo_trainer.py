@@ -378,7 +378,7 @@ class DDPOTrainer:
 
         # return tensor of images
         samples = torch.cat([sample["images"] for sample in self.samples])
-        return samples, prompts
+        return samples, self.prompts
 
 
     def train(self, reward_model, processor, logger, epoch):

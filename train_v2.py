@@ -74,12 +74,11 @@ def main(cfg: TrainerConfig) -> None:
     for epoch in range(5):
         print("Loop epoch ", epoch)
         samples, prompts = ddpo_trainer.sample(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
-        breakpoint()
         
         # dummy samples for PickScore testing
         # samples = torch.Tensor()
         # samples = samples.new_zeros(size=[32,3,256,256])
-        reward_model_trainer.train(image_batch=samples, epoch=epoch, prompt=prompt, logger=logger)
+        reward_model_trainer.train(image_batch=samples, epoch=epoch, prompts=prompts, logger=logger)
         ddpo_trainer.train(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
 
 if __name__ == "__main__":

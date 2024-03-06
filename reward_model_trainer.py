@@ -177,7 +177,7 @@ class PickScoreTrainer:
         #     raise ValueError(f"Config was not saved correctly - {yaml_path}")
         logger.info(f"Config can be found in {yaml_path}")
 
-    def train(self, image_batch, prompt, epoch, logger):
+    def train(self, image_batch, prompts, epoch, logger):
 
         # TODO - logging
 
@@ -185,16 +185,17 @@ class PickScoreTrainer:
         ########### Active Query and Dataset Update ###########
         #######################################################
         if self.accelerator.is_main_process:
-            queries = self.query_generator.generate_queries(
+            queries, query_prompts = self.query_generator.generate_queries(
                 images=image_batch,
                 query_algorithm="random", # TODO - add to config
-                n_queries=3, # TODO - add to config
+                n_queries=30, # TODO - add to config
+                prompts=prompts,
             )
 
             # Collect preferences
             self.feedback_interface.reset_dataset() # clear data from previous iteration
             self.feedback_interface.query_batch(
-                prompt=prompt,
+                prompts=query_prompts,
                 image_batch=image_batch,
                 query_indices=queries,
             )

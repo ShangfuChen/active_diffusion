@@ -13,7 +13,7 @@ class QueryGenerator:
             "random" : self._random_query_algorithm,
         }
 
-    def generate_queries(self, images, query_algorithm, n_queries):
+    def generate_queries(self, images, query_algorithm, n_queries, prompts=None):
         """
         Given directories of images to use in query, generate queries
 
@@ -21,6 +21,8 @@ class QueryGenerator:
             images (list(str) or torch.Tensor) : list of image directories or batch of images in Tensor form (B x C x H x W)
             query_algorithm (str) : name of query algorithm
             n_queries (int) : number of queries to generate
+            prompts (list(str)) : list of prompts used to generate each image in images.
+                If provided, each image in a single query comes from the same prompt
         """
         
         assert query_algorithm in self.QUERY_ALGORITHMS.keys(), f"query_algorithm must be one of {self.QUERY_ALGORITHMS.keys()}\n Got {query_algorithm}"
@@ -34,38 +36,19 @@ class QueryGenerator:
                 img_names = os.listdir(img_dir)
                 img_paths += [os.path.join(img_dir, img_name) for img_name in img_names]
 
-            return query_function(images=img_paths, n_queries=n_queries), img_paths
+            return query_function(images=img_paths, n_queries=n_queries, prompts=prompts), img_paths
 
         elif type(images) == torch.Tensor:
 
-            return query_function(images=images, n_queries=n_queries)
-
-    # def generate_queries_from_tensor(self, image_batch, query_algorithm, n_queries):
-    #     """
-    #     Given a batch of images in Tensor form, query algorithm choice and the number of queries,
-    #     generate a list of queries.
-
-    #     Args:
-    #         image_batch (Tensor) : (B x C x H x W) batch of images
-    #         query_algorithm (str) : name of query algorithm
-    #         n_queries (int) : number of queries to generate
-
-    #     Returns: 
-    #         queries (list(list)) : list of image pairs to be queried 
-    #     """
-
-    #     assert query_algorithm in self.QUERY_ALGORITHMS.keys(), f"query_algorithm must be one of {self.QUERY_ALGORITHMS.keys()}\n Got {query_algorithm}"
-    #     query_function = self.QUERY_ALGORITHMS[query_algorithm]
-
-    #     return query_function(images=image_batch, n_queries=n_queries)
+            return query_function(images=images, n_queries=n_queries, prompts=prompts)
 
 
-    # def generate_queries(self, image_directories, query_algorithm, n_queries):
+    # def generate_queries(self, images, query_algorithm, n_queries):
     #     """
     #     Given directories of images to use in query, generate queries
 
     #     Args:
-    #         image_directories (list(str)) : list of paths to directories where images to be used in queries are located
+    #         images (list(str) or torch.Tensor) : list of image directories or batch of images in Tensor form (B x C x H x W)
     #         query_algorithm (str) : name of query algorithm
     #         n_queries (int) : number of queries to generate
     #     """
@@ -73,22 +56,28 @@ class QueryGenerator:
     #     assert query_algorithm in self.QUERY_ALGORITHMS.keys(), f"query_algorithm must be one of {self.QUERY_ALGORITHMS.keys()}\n Got {query_algorithm}"
     #     query_function = self.QUERY_ALGORITHMS[query_algorithm]
 
-    #     # list out all images (dir/imgx.jpg format)
-    #     img_paths = []
+    #     if type(images[0]) == str:
+    #         # list out all images (dir/imgx.jpg format)
+    #         img_paths = []
 
-    #     for img_dir in image_directories:
-    #         img_names = os.listdir(img_dir)
-    #         img_paths += [os.path.join(img_dir, img_name) for img_name in img_names]
+    #         for img_dir in images:
+    #             img_names = os.listdir(img_dir)
+    #             img_paths += [os.path.join(img_dir, img_name) for img_name in img_names]
 
-    #     return query_function(img_paths, n_queries)
+    #         return query_function(images=img_paths, n_queries=n_queries), img_paths
+
+    #     elif type(images) == torch.Tensor:
+
+    #         return query_function(images=images, n_queries=n_queries)
 
 
-    def _random_query_algorithm(self, images, n_queries):
+    def _random_query_algorithm(self, images, n_queries, prompts=None):
         """
         Randomly chooses 2 images to query
 
         Args:
             images (list(str) or tensor) : list of paths to images or a batch of images in the form of tensor (B x C x H x W)
+            prompts (list(str)) : list of prompts used to generate each image in images
 
         Returns:
             queries (list(list(int))) : list of image index pairs to query
@@ -96,15 +85,34 @@ class QueryGenerator:
         queries = []
         if type(images[0]) == str:
             n_images = len(images)
+        
         elif type(images) == torch.Tensor:
             n_images = images.shape[0]
 
-        indices = np.arange(n_images)
+        # handle case wehere prompts is list(tuple(str))
+        if type(prompts[0]) == tuple:
+            prompts = [list(tup) for tup in prompts]
+            prompts = [prompt for sublist in prompts for prompt in sublist]
 
-        for _ in range(n_queries):
-            queries.append(random.choices(indices, k=2))
+        indices = np.arange(n_images)
         
-        return queries
+        # if prompts are not provided, return pairs of random indices
+        if prompts is None:
+            for _ in range(n_queries):
+                queries.append(random.choices(indices, k=2))
+            return queries
+
+        # otherwise, make sure each pair comes from the same prompt
+        prompt_to_indices = {}
+        for prompt in prompts:
+            if not prompt in prompt_to_indices.keys():
+                prompt_to_indices[prompt] = np.where(np.array(prompts) == prompt)[0]
+        query_prompts = random.choices(list(prompt_to_indices.keys()), k=n_queries)
+
+        for query_prompt in query_prompts:
+            queries.append(random.choices(prompt_to_indices[query_prompt], k=2))
+
+        return queries, query_prompts
 
     # def _random_query_algorithm(self, img_paths, n_queries):
     #     """
