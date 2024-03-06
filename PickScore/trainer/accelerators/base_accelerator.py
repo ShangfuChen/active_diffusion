@@ -66,7 +66,7 @@ class BaseAcceleratorConfig:
     project_name: str = "reward"
     max_grad_norm: float = 1.0
     save_steps: int = 1000
-    metric_name: str = "accuracy"
+    metric_name: str = "reward_accuracy"
     metric_mode: MetricMode = MetricMode.MAX
     limit_num_checkpoints: int = 50
     save_only_if_best: bool = False
