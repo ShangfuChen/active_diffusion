@@ -177,6 +177,8 @@ class BaseAccelerator(abc.ABC):
         self.progress_bar = tqdm(range(self.cfg.max_steps * self.cfg.gradient_accumulation_steps), disable=not self.accelerator.is_main_process)
         self.progress_bar.set_description("Steps")
 
+    ### TODO ###
+    # train_v2.py does not need this function. consider remove?
     def should_skip(self, epoch, step):
         should = epoch < self.epoch or (epoch == self.epoch and step < self.step)
         if should:
@@ -193,6 +195,8 @@ class BaseAccelerator(abc.ABC):
         if self.is_main_process:
             self.accelerator.log(data, step=self.global_step)
 
+    ### TODO ###
+    # train_v2.py does not need this function. consider remove?
     def recalc_train_length_after_prepare(self, num_batches):
         num_update_steps_per_epoch = math.ceil(num_batches / self.cfg.gradient_accumulation_steps)
         if self.cfg.max_steps is None:
@@ -226,7 +230,9 @@ class BaseAccelerator(abc.ABC):
 
     def get_allocated_cuda_memory(self):
         return round(torch.cuda.max_memory_allocated(self.accelerator.device) / 1024 / 1024 / 1024, 2)
-
+    
+    ### TODO ###
+    # train_v2.py does not need this function. consider remove?
     def update_step(self, loss, lr):
         self.step += 1
         self.lr = lr
