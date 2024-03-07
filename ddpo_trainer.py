@@ -435,7 +435,7 @@ class DDPOTrainer:
                         )  # only log rewards from process 0
                     ],
                 },
-                step=self.global_step,
+                # step=self.global_step,
             )
 
         # gather rewards across processes
@@ -448,7 +448,7 @@ class DDPOTrainer:
                 "ddpo_reward_mean": rewards.mean(),
                 "ddpo_reward_std": rewards.std(),
             },
-            step=self.global_step,
+            # step=self.global_step,
         )
 
         # per-prompt mean/std tracking
@@ -617,7 +617,9 @@ class DDPOTrainer:
                         info = {k: torch.mean(torch.stack(v)) for k, v in info.items()}
                         info = self.accelerator.reduce(info, reduction="mean")
                         info.update({"ddpo_epoch": epoch, "ddpo_inner_epoch": inner_epoch})
-                        self.accelerator.log(info, step=self.global_step)
+                        info.update({"ddpo_step": self.global_step})
+                        # self.accelerator.log(info, step=self.global_step)
+                        self.accelerator.log(info)
                         self.global_step += 1
                         info = defaultdict(list)
 

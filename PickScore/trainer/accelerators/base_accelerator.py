@@ -193,7 +193,8 @@ class BaseAccelerator(abc.ABC):
 
     def log(self, data):
         if self.is_main_process:
-            self.accelerator.log(data, step=self.global_step)
+            # self.accelerator.log(data, step=self.global_step)
+            self.accelerator.log(data)
 
     ### TODO ###
     # train_v2.py does not need this function. consider remove?
@@ -222,7 +223,6 @@ class BaseAccelerator(abc.ABC):
         self.global_step += 1
         self.log({
             "reward_lr": self.lr,
-            "reward_step": self.step,
             "reward_epoch": self.epoch,
             "reward_global_step": self.global_step,
             "reward_loss": loss,

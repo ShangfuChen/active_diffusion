@@ -67,34 +67,34 @@ class MyHFDataset(BaseDataset):
     def __init__(self, cfg: MyHFDatasetConfig, split: str = "train"):
         self.cfg = cfg
         self.split = split
-        logger.info(f"Loading {self.split} dataset")
+        # logger.info(f"Loading {self.split} dataset")
 
         self.dataset = self.load_hf_dataset(self.split)
-        logger.info(f"Loaded {len(self.dataset)} examples from {self.split} dataset")
+        # logger.info(f"Loaded {len(self.dataset)} examples from {self.split} dataset")
 
         if self.cfg.keep_only_different:
             self.dataset = self.dataset.filter(lambda x: x[self.cfg.are_different_column_name])
 
         if self.cfg.keep_only_with_label:
-            logger.info(f"Keeping only examples with label")
+            # logger.info(f"Keeping only examples with label")
             self.dataset = self.dataset.filter(lambda x: x[self.cfg.has_label_column_name])
-            logger.info(f"Kept {len(self.dataset)} examples from {self.split} dataset")
+            # logger.info(f"Kept {len(self.dataset)} examples from {self.split} dataset")
         elif self.cfg.keep_only_with_label_in_non_train and self.split != self.cfg.train_split_name:
-            logger.info(f"Keeping only examples with label in {self.split} split")
+            # logger.info(f"Keeping only examples with label in {self.split} split")
             self.dataset = self.dataset.filter(lambda x: x[self.cfg.has_label_column_name])
-            logger.info(f"Kept {len(self.dataset)} examples from {self.split} dataset")
+            # logger.info(f"Kept {len(self.dataset)} examples from {self.split} dataset")
 
         if self.cfg.limit_examples_per_prompt > 0:
-            logger.info(f"Limiting examples per prompt to {self.cfg.limit_examples_per_prompt}")
+            # logger.info(f"Limiting examples per prompt to {self.cfg.limit_examples_per_prompt}")
             df = self.dataset.to_pandas()
             df = df.drop('__index_level_0__', axis=1)
-            logger.info(f"Loaded {len(df)} examples from {self.split} dataset")
+            # logger.info(f"Loaded {len(df)} examples from {self.split} dataset")
             df = df.groupby(self.cfg.caption_column_name).head(self.cfg.limit_examples_per_prompt)
-            logger.info(f"Kept {len(df)} examples from {self.split} dataset")
+            # logger.info(f"Kept {len(df)} examples from {self.split} dataset")
             self.dataset = Dataset.from_pandas(df)
 
         if self.cfg.only_on_best and self.split == self.cfg.train_split_name:
-            logger.info(f"Keeping only best examples for training")
+            # logger.info(f"Keeping only best examples for training")
             train_dataset = self.dataset.remove_columns([self.cfg.image_0_column_name, self.cfg.image_1_column_name])
             df = train_dataset.to_pandas()
             df = df[df[self.cfg.has_label_column_name] == 1]
@@ -123,7 +123,7 @@ class MyHFDataset(BaseDataset):
             self.dataset = self.dataset.select(keep_ids)
             new_ids = list(range(len(df)))
             uid2index = dict(zip(df.image_0_uid, new_ids)) | dict(zip(df.image_1_uid, new_ids))
-            logger.info(f"Kept only {len(self.dataset)} best examples for training")
+            # logger.info(f"Kept only {len(self.dataset)} best examples for training")
             self.bad_images_uids2good_images_uids = bad_images_uids2good_images_uids
             self.uid2index = uid2index
             self.uid2image_col_name = uid2image_col_name

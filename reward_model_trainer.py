@@ -223,7 +223,6 @@ class PickScoreTrainer:
         ################ Reward Model Training ################
         #######################################################
         # Train reward model for n epochs
-
         train_loss, lr = 0.0, 0.0
         for inner_epoch in range(self.cfg.accelerator.num_epochs): # TODO config should have something like reward epochs per loop
             for step, batch in enumerate(self.split2dataloader[self.cfg.dataset.train_split_name]):
@@ -248,7 +247,6 @@ class PickScoreTrainer:
                     self.lr_scheduler.step()
                     self.optimizer.zero_grad()
 
-                # train_loss += avg_loss / self.accelerator.cfg.gradient_accumulation_steps
                 train_loss += avg_loss / self.cfg.accelerator.gradient_accumulation_steps
                 if self.accelerator.sync_gradients:
                     self.accelerator.update_global_step(train_loss)
