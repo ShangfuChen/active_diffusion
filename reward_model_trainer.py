@@ -272,3 +272,124 @@ class PickScoreTrainer:
             self.accelerator.update_epoch()
 
         self.accelerator.wait_for_everyone()
+
+
+class PickScoreStaticDatasetTrainer(PickScoreTrainer):
+    def __init__(self, cfg : DictConfig):
+        self.cfg = cfg
+        self.logger = get_logger(__name__)
+        os.environ["TOKENIZERS_PARALLELISM"] = "false"
+
+    def train(self,):
+        accelerator = instantiate_with_cfg(self.cfg.accelerator)
+        if self.cfg.debug.activate and accelerator.is_main_process:
+            import pydevd_pycharm
+            pydevd_pycharm.settrace('localhost', port=self.cfg.debug.port, stdoutToServer=True, stderrToServer=True)
+
+        if accelerator.is_main_process:
+            self.verify_or_write_config(self.cfg, self.logger)
+
+        self.logger.info(f"Loading task")
+        task = self.load_task(self.cfg.task, accelerator)
+        self.logger.info(f"Loading model")
+        model = instantiate_with_cfg(self.cfg.model)
+        self.logger.info(f"Loading criterion")
+        criterion = instantiate_with_cfg(self.cfg.criterion)
+        self.logger.info(f"Loading optimizer")
+        optimizer = self.load_optimizer(self.cfg.optimizer, model)
+        self.logger.info(f"Loading lr scheduler")
+        lr_scheduler = self.load_scheduler(self.cfg.lr_scheduler, optimizer)
+        self.logger.info(f"Loading dataloaders")
+        split2dataloader = self.load_dataloaders(self.cfg.dataset)
+
+        dataloaders = list(split2dataloader.values())
+        model, optimizer, lr_scheduler, *dataloaders = accelerator.prepare(model, optimizer, lr_scheduler, *dataloaders)
+        split2dataloader = dict(zip(split2dataloader.keys(), dataloaders))
+
+        accelerator.load_state_if_needed()
+
+        accelerator.recalc_train_length_after_prepare(len(split2dataloader[self.cfg.dataset.train_split_name]))
+
+        accelerator.init_training(self.cfg)
+
+        def evaluate():
+            model.eval()
+            end_of_train_dataloader = accelerator.gradient_state.end_of_dataloader
+            self.logger.info(f"*** Evaluating {self.cfg.dataset.valid_split_name} ***")
+            metrics = task.evaluate(model, criterion, split2dataloader[self.cfg.dataset.valid_split_name])
+            accelerator.update_metrics(metrics)
+            # accelerator.gradient_state.end_of_dataloader = end_of_train_dataloader
+
+        self.logger.info(f"task: {task.__class__.__name__}")
+        self.logger.info(f"num. model params: {int(sum(p.numel() for p in model.parameters()) // 1e6)}M")
+        self.logger.info(f"model: {model.__class__.__name__}")
+        self.logger.info(
+            f"num. model trainable params: {int(sum(p.numel() for p in model.parameters() if p.requires_grad) // 1e6)}M")
+        self.logger.info(f"criterion: {criterion.__class__.__name__}")
+        self.logger.info(f"num. train examples: {len(split2dataloader[self.cfg.dataset.train_split_name].dataset)}")
+        self.logger.info(f"num. valid examples: {len(split2dataloader[self.cfg.dataset.valid_split_name].dataset)}")
+        self.logger.info(f"num. test examples: {len(split2dataloader[self.cfg.dataset.test_split_name].dataset)}")
+
+        for epoch in range(accelerator.cfg.num_epochs):
+            print("Epoch ", epoch)
+            train_loss, lr = 0.0, 0.0
+            for step, batch in enumerate(split2dataloader[self.cfg.dataset.train_split_name]):
+                if accelerator.should_skip(epoch, step):
+                    accelerator.update_progbar_step()
+                    continue
+
+                if accelerator.should_eval():
+                    evaluate()
+
+                if accelerator.should_save():
+                    accelerator.save_checkpoint()
+
+                model.train()
+
+                with accelerator.accumulate(model):
+                    loss = task.train_step(model, criterion, batch)
+                    avg_loss = accelerator.gather(loss).mean().item()
+
+                    accelerator.backward(loss)
+                    if accelerator.sync_gradients:
+                        accelerator.clip_grad_norm_(model.parameters())
+
+                    optimizer.step()
+                    lr_scheduler.step()
+                    optimizer.zero_grad()
+
+                train_loss += avg_loss / accelerator.cfg.gradient_accumulation_steps
+
+                if accelerator.sync_gradients:
+                    accelerator.update_global_step(train_loss)
+                    train_loss = 0.0
+
+                if accelerator.global_step > 0:
+                    try:
+                        lr = lr_scheduler.get_last_lr()[0]
+                    except:
+                        print("get_last_lr exception. Setting lr=0.0")
+                        lr = 0.0
+                accelerator.update_step(avg_loss, lr)
+
+                if accelerator.should_end():
+                    evaluate()
+                    accelerator.save_checkpoint()
+                    break
+
+            if accelerator.should_end():
+                break
+
+            accelerator.update_epoch()
+
+        accelerator.wait_for_everyone()
+        accelerator.load_best_checkpoint()
+        self.logger.info(f"*** Evaluating {self.cfg.dataset.valid_split_name} ***")
+        metrics = task.evaluate(model, criterion, split2dataloader[self.cfg.dataset.valid_split_name])
+        accelerator.update_metrics(metrics)
+        self.logger.info(f"*** Evaluating {self.cfg.dataset.test_split_name} ***")
+        metrics = task.evaluate(model, criterion, split2dataloader[self.cfg.dataset.test_split_name])
+        metrics = {f"{self.cfg.dataset.test_split_name}_{k}": v for k, v in metrics.items()}
+        accelerator.update_metrics(metrics)
+        accelerator.unwrap_and_save(model)
+        accelerator.end_training()

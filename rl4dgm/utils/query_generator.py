@@ -11,6 +11,7 @@ class QueryGenerator:
     def __init__(self):
         self.QUERY_ALGORITHMS = {
             "random" : self._random_query_algorithm,
+            "ordered" : self._ordered_query_algorithm,
         }
 
     def generate_queries(self, images, query_algorithm, n_queries, prompts=None):
@@ -70,6 +71,16 @@ class QueryGenerator:
 
     #         return query_function(images=images, n_queries=n_queries)
 
+    def _ordered_query_algorithm(self, images, prompts=None, **kwargs):
+        """
+        Generates queries in order of the provided images:
+            queries = [[0, 1], [1, 2], ... [n-1, n]]
+        """
+
+        queries = []
+        for i in range(len(images)-1):
+            queries.append([i, i+1])
+        return queries
 
     def _random_query_algorithm(self, images, n_queries, prompts=None):
         """
@@ -88,19 +99,19 @@ class QueryGenerator:
         
         elif type(images) == torch.Tensor:
             n_images = images.shape[0]
-
-        # handle case wehere prompts is list(tuple(str))
-        if type(prompts[0]) == tuple:
-            prompts = [list(tup) for tup in prompts]
-            prompts = [prompt for sublist in prompts for prompt in sublist]
-
-        indices = np.arange(n_images)
         
+        indices = np.arange(n_images)
+
         # if prompts are not provided, return pairs of random indices
         if prompts is None:
             for _ in range(n_queries):
                 queries.append(random.choices(indices, k=2))
             return queries
+        
+        # handle case wehere prompts is list(tuple(str))
+        if type(prompts[0]) == tuple:
+            prompts = [list(tup) for tup in prompts]
+            prompts = [prompt for sublist in prompts for prompt in sublist]
 
         # otherwise, make sure each pair comes from the same prompt
         prompt_to_indices = {}
@@ -114,17 +125,4 @@ class QueryGenerator:
 
         return queries, query_prompts
 
-    # def _random_query_algorithm(self, img_paths, n_queries):
-    #     """
-    #     Randomly chooses 2 images
-    #     outputs [
-    #         [img1, img2],       # query 1
-    #         [img3, img2], ...   # query 2
-    #     ]
-    #     """
-    #     queries = []
-    #     for _ in range(n_queries):
-    #         queries.append(random.choices(img_paths, k=2))
-        
-    #     return queries
-        
+
