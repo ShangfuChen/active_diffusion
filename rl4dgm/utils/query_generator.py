@@ -105,7 +105,7 @@ class QueryGenerator:
         # if prompts are not provided, return pairs of random indices
         if prompts is None:
             for _ in range(n_queries):
-                queries.append(random.choices(indices, k=2))
+                queries.append(random.sample(list(indices), k=2))
             return queries
         
         # handle case wehere prompts is list(tuple(str))
@@ -121,8 +121,7 @@ class QueryGenerator:
         query_prompts = random.choices(list(prompt_to_indices.keys()), k=n_queries)
 
         for query_prompt in query_prompts:
-            queries.append(random.choices(prompt_to_indices[query_prompt], k=2))
-
+            queries.append(random.sample(list(prompt_to_indices[query_prompt]), k=2))
         return queries, query_prompts
 
 

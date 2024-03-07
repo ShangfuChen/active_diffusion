@@ -2,10 +2,12 @@
 import os
 import argparse
 import numpy as np
+import torch
 
 from transformers import AutoProcessor, AutoModel
 from PIL import Image
-import torch
+from datasets import load_dataset
+
 
 def score_and_save_images(prompt, img_dir, img_save_dir, hf_model_path, ckpt_path=None):    
 
@@ -86,19 +88,31 @@ def score_and_save_images(prompt, img_dir, img_save_dir, hf_model_path, ckpt_pat
     print("stdev", np.std(scores))
     breakpoint()
 
+def save_images_from_dataset(datafile_path, img_save_dir):
+    
+    dataset = load_dataset("parquet", data_files={"train" : datafile_path})
+    # imgs = dataset["train"][]
+    breakpoint()
+
 def main(args):
-    score_and_save_images(
-        prompt=args.prompt,
-        img_dir=args.img_dir,
+    
+    save_images_from_dataset(
+        datafile_path=args.datafile_path,
         img_save_dir=args.img_save_dir,
-        hf_model_path=args.hf_model_path,
-        ckpt_path=args.ckpt_path,
     )
+    # score_and_save_images(
+    #     prompt=args.prompt,
+    #     img_dir=args.img_dir,
+    #     img_save_dir=args.img_save_dir,
+    #     hf_model_path=args.hf_model_path,
+    #     ckpt_path=args.ckpt_path,
+    # )
 
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser()
     parser.add_argument("--prompt", type=str)
+    parser.add_argument("--datafile-path", type=str)
     parser.add_argument("--img-dir", type=str)
     parser.add_argument("--img-save-dir", type=str)
     parser.add_argument("--hf-model-path", type=str, default="yuvalkirstain/PickScore_v1")

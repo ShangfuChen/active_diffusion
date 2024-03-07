@@ -14,6 +14,7 @@ from datetime import datetime
 import shutil
 
 from rl4dgm.utils.query_generator import QueryGenerator
+from rl4dgm.utils.generate_images import ImageGenerator
 
 NUM_ITERS_TO_RUN = 3
 NUM_INFERENCE_STEPS = 10
@@ -185,9 +186,13 @@ def generate_dummy_cat_dataset(model, data_save_dir, n_images, n_queries, datafi
     print("removing saved images...")
     shutil.rmtree(os.path.join(data_save_dir, "image_data"))
 
-
 def generate_dummy_cat_random_ranked_dataset(model, data_save_dir, n_images, n_queries, datafile_name="dummy_ranked.parquet", seed=None):
-    
+
+    image_generator = ImageGenerator()
+    if seed is None:
+        seed = torch.random.seed()
+    generator = torch.manual_seed(seed)
+
     #### Generate Images ####
     prompts = [
         "A cute black cat with round eyes",
@@ -196,38 +201,81 @@ def generate_dummy_cat_random_ranked_dataset(model, data_save_dir, n_images, n_q
         "A demonic white cat with sharp eyes",
     ]
 
-    img_dirs = []
-    for prompt in prompts:
-        img_save_dir = os.path.join(data_save_dir, "image_data", prompt.replace(" ", "_"))
-        img_dirs.append(img_save_dir)
-        generate_images(model=model, img_save_dir=img_save_dir, prompt=prompt, n_images=n_images, seed=seed)
+    img_save_dir = os.path.join(data_save_dir, "image_data")
 
-    # prompt = "a cute cat"
-    # img_save_dir = os.path.join(data_save_dir, "image_data")
-    # generate_images(img_save_dir=img_save_dir, prompt=prompt, n_images=100, seed=seed)
+    image_generator.generate_images_from_prompt_list(
+        model=model,
+        generator=generator,
+        n_images=100,
+        img_save_dir=img_save_dir,
+        prompts=prompts,
+        separate_by_prompt=True,           
+    )
 
     #### Generate Preference Data ####
     preference_df = create_pickapic_dataframe()
 
     # generate queries
     query_generator = QueryGenerator()
-    queries, img_paths = query_generator.generate_queries(images=img_dirs, query_algorithm="ordered", n_queries=100)
+    queries, img_paths = query_generator.generate_queries(images=[img_save_dir], query_algorithm="ordered", n_queries=100)
     for i, query in enumerate(queries):
         im0 = img_paths[query[0]]
         im1 = img_paths[query[1]]
         label0, label1 = preference_from_image_order(img_paths=[im0, im1])
         preference_df = add_to_pickapic_dataframe(
             preference_df=preference_df, 
-            prompt=prompt,
+            prompt="a cute cat",
             labels=(label0, label1), 
             image_paths=(im0, im1),
         )
     preference_df.to_parquet(os.path.join(data_save_dir, datafile_name))
     print("Saved to: ", os.path.join(data_save_dir, datafile_name))
 
-    print("removing saved images...")
-    shutil.rmtree(os.path.join(data_save_dir, "image_data"))
+    # print("removing saved images...")
+    # shutil.rmtree(os.path.join(data_save_dir, "image_data"))
 
+
+# def generate_dummy_cat_random_ranked_dataset(model, data_save_dir, n_images, n_queries, datafile_name="dummy_ranked.parquet", seed=None):
+    
+#     #### Generate Images ####
+#     prompts = [
+#         "A cute black cat with round eyes",
+#         "A demonic black cat with sharp eyes",
+#         "A cute white cat with round eyes",
+#         "A demonic white cat with sharp eyes",
+#     ]
+
+#     img_dirs = []
+#     for prompt in prompts:
+#         img_save_dir = os.path.join(data_save_dir, "image_data", prompt.replace(" ", "_"))
+#         img_dirs.append(img_save_dir)
+#         generate_images(model=model, img_save_dir=img_save_dir, prompt=prompt, n_images=n_images, seed=seed)
+
+#     # prompt = "a cute cat"
+#     # img_save_dir = os.path.join(data_save_dir, "image_data")
+#     # generate_images(img_save_dir=img_save_dir, prompt=prompt, n_images=100, seed=seed)
+
+#     #### Generate Preference Data ####
+#     preference_df = create_pickapic_dataframe()
+
+#     # generate queries
+#     query_generator = QueryGenerator()
+#     queries, img_paths = query_generator.generate_queries(images=img_dirs, query_algorithm="ordered", n_queries=100)
+#     for i, query in enumerate(queries):
+#         im0 = img_paths[query[0]]
+#         im1 = img_paths[query[1]]
+#         label0, label1 = preference_from_image_order(img_paths=[im0, im1])
+#         preference_df = add_to_pickapic_dataframe(
+#             preference_df=preference_df, 
+#             prompt=prompt,
+#             labels=(label0, label1), 
+#             image_paths=(im0, im1),
+#         )
+#     preference_df.to_parquet(os.path.join(data_save_dir, datafile_name))
+#     print("Saved to: ", os.path.join(data_save_dir, datafile_name))
+
+#     print("removing saved images...")
+#     shutil.rmtree(os.path.join(data_save_dir, "image_data"))
 
 def preference_from_ranked_prompts(prompts, img_paths, **kwargs):
     """

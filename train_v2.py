@@ -40,7 +40,7 @@ def main(cfg: TrainerConfig) -> None:
     print("Config", cfg)
     print("\n\n", cfg.dataset.dataset_name)
     print("-"*50)
-
+    # breakpoint()
     # dummy reward model
     processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
     processor = AutoProcessor.from_pretrained(processor_name_or_path)
@@ -62,8 +62,6 @@ def main(cfg: TrainerConfig) -> None:
     # )
     # breakpoint()
 
-
-
     from PickScore.trainer.configs.configs import TrainerConfig, instantiate_with_cfg
     ac = instantiate_with_cfg(cfg.accelerator)
 
@@ -71,15 +69,15 @@ def main(cfg: TrainerConfig) -> None:
     reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
     prompt = "a cute cat" # TODO - get from user input?
 
-    for epoch in range(5):
-        print("Loop epoch ", epoch)
-        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+    for loop in range(5):
+        print("Loop epoch ", loop)
+        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
         
         # dummy samples for PickScore testing
         # samples = torch.Tensor()
         # samples = samples.new_zeros(size=[32,3,256,256])
-        reward_model_trainer.train(image_batch=samples, epoch=epoch, prompts=prompts, logger=logger)
-        ddpo_trainer.train(logger=logger, epoch=epoch, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        reward_model_trainer.train(image_batch=samples, epoch=loop, prompts=prompts, logger=logger)
+        ddpo_trainer.train(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
 
 if __name__ == "__main__":
     # app.run(main)

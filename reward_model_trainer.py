@@ -80,12 +80,18 @@ class PickScoreTrainer:
         processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
         self.processor = AutoProcessor.from_pretrained(processor_name_or_path)
 
-        # initialize feedback interface - TODO get type from confg and initialize appropriate class
-        # self.feedback_interface = AIFeedbackInterface(preference_function=preference_from_keyphrases)
-        self.feedback_interface = HumanFeedbackInterface()
+        # initialize feedback interface 
+        if cfg.query_conf.feedback_agent == "human":
+            self.feedback_interface = HumanFeedbackInterface()
+        else:
+            raise Exception(f"human is the only feedback agent currently supported. Got {cfg.query_conf.feedback_agent}")
 
         # initialize query generator
         self.query_generator = QueryGenerator()
+
+        # get query algorithm type from config
+        self.query_method = cfg.query_conf.query_algorithm
+        assert self.query_method in self.query_generator.QUERY_ALGORITHMS.keys(), f"query should be one of {self.query_generator.QUERY_ALGORITHMS.keys()}. Got {self.query_method}"
 
         # Create files to save images and dataset to
         if self.accelerator.is_main_process:
@@ -187,8 +193,8 @@ class PickScoreTrainer:
         if self.accelerator.is_main_process:
             queries, query_prompts = self.query_generator.generate_queries(
                 images=image_batch,
-                query_algorithm="random", # TODO - add to config
-                n_queries=1, # TODO - add to config
+                query_algorithm=self.query_method, # TODO - add to config
+                n_queries=self.cfg.query_conf.n_feedbacks_per_query, # TODO - add to config
                 prompts=prompts,
             )
 
@@ -228,7 +234,8 @@ class PickScoreTrainer:
             for step, batch in enumerate(self.split2dataloader[self.cfg.dataset.train_split_name]):
                 if self.accelerator.should_eval():
                     # TODO - validation dataset can be accumulation of all previous human feedbacks?
-                    self.evaluate(logger=logger)
+                    pass
+                    # self.evaluate(logger=logger)
 
                 if self.accelerator.should_save():
                     self.accelerator.save_checkpoint()

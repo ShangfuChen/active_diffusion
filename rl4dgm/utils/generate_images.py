@@ -36,12 +36,14 @@ class ImageGenerator:
         generator,
         n_inference_steps=10,
         img_dim=(256,256),
+        img_start_idx=0, # when calling this function multiple times to 
     ):
         # create image save folder
-        if os.path.exists(img_save_dir):
+        exist_ok = img_start_idx > 0 
+        if os.path.exists(img_save_dir) and not exist_ok:
             # remove directory if it already exists
             shutil.rmtree(img_save_dir)
-        os.makedirs(img_save_dir, exist_ok=False)
+        os.makedirs(img_save_dir, exist_ok=exist_ok)
 
         n_imgs_saved = 0
         while n_imgs_saved < n_images:
@@ -61,7 +63,7 @@ class ImageGenerator:
                 if np.all(np.array(im.getdata()) == [0,0,0]):
                     print("NSFW black image generated. Not saving this image.")
                 else:
-                    im.save(os.path.join(img_save_dir, f"{n_imgs_saved}.jpg"), "JPEG")
+                    im.save(os.path.join(img_save_dir, f"{n_imgs_saved + img_start_idx}.jpg"), "JPEG")
                     n_imgs_saved += 1
                 
         print(f"Generated {n_imgs_saved} images")
@@ -75,9 +77,10 @@ class ImageGenerator:
         prompts,
         n_inference_steps=10,
         img_dim=(256,256), 
+        separate_by_prompt=True,
     ):
         """
-        Given a list of prompts, generate a total number of n_images images. Images are saved to img_save_dir/prompt_with_spaces_replaced_by_underscores.
+        Given a list of prompts, generate a total number of n_images images. 
 
         Args:
             model : text-to-image model used to generate the images
@@ -85,7 +88,11 @@ class ImageGenerator:
             prompts (list(str)) : lsit of prompts
             n_inference_steps (int) : number of denoising steps to use for image generation
             img_dim (2-tuple(int)) : size of images to generate
+            separate_by_prompt (bool) : whether to save images to separate directories by prompt
+                If True, images are saved to img_save_dir/prompt_with_spaces_replaced_by_underscores
+                If False, all images are saved to img_save_dir
         """
+        img_folders = []
 
         # Compute number of images to generate per prompt
         n_prompts = len(prompts)
@@ -96,8 +103,11 @@ class ImageGenerator:
             n_imgs_per_prompt[i] += 1
         random.shuffle(n_imgs_per_prompt)
 
+        # Case for saving to separate directories
+        start_idx = 0
         for prompt, n in zip(prompts, n_imgs_per_prompt):
             img_save_folder = os.path.join(img_save_dir, prompt.replace(" ", "_"))
+            img_folders.append(img_save_folder)
             self.generate_images(
                 model=model,
                 img_save_dir=img_save_folder,
@@ -106,7 +116,23 @@ class ImageGenerator:
                 generator=generator,
                 n_inference_steps=n_inference_steps,
                 img_dim=img_dim,
+                img_start_idx=0,
             )
+
+        # Case for saving everything to same directory
+        for prompt, n in zip(prompts, n_imgs_per_prompt):
+            self.generate_images(
+                model=model,
+                img_save_dir=img_save_dir,
+                prompt=prompt,
+                n_images=n,
+                generator=generator,
+                n_inference_steps=n_inference_steps,
+                img_dim=img_dim,
+                img_start_idx=start_idx,
+            )
+            start_idx += n
+        
 
     def generate_cat_images(
         self,
