@@ -29,6 +29,9 @@ from trainer.configs.configs import TrainerConfig, instantiate_with_cfg
 import tqdm
 import torch
 import os
+import numpy as np
+
+from rl4dgm.utils.test_pickscore import score_images
 
 logger = get_logger(__name__)
 
@@ -69,15 +72,68 @@ def main(cfg: TrainerConfig) -> None:
     reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
     prompt = "a cute cat" # TODO - get from user input?
 
+    _, prev_scores = score_images(
+        model=reward_model_trainer.model.module, 
+        processor=reward_model_trainer.processor, 
+        prompt=prompt, 
+        img_dir="/home/hayano/active_diffusion/poc_datasets/ordered_cat_bw/image_data"
+    )
     for loop in range(5):
         print("Loop epoch ", loop)
-        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
         
+        probs, scores = score_images(
+            model=reward_model_trainer.model.module, 
+            processor=reward_model_trainer.processor, 
+            prompt=prompt, 
+            img_dir="/home/hayano/active_diffusion/poc_datasets/ordered_cat_bw/image_data"
+        )
+        # breakpoint()
+
+        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        # breakpoint()
         # dummy samples for PickScore testing
         # samples = torch.Tensor()
         # samples = samples.new_zeros(size=[32,3,256,256])
+
         reward_model_trainer.train(image_batch=samples, epoch=loop, prompts=prompts, logger=logger)
+        _, scores = score_images(
+            model=reward_model_trainer.model.module, 
+            processor=reward_model_trainer.processor, 
+            prompt=prompt, 
+            img_dir="/home/hayano/active_diffusion/poc_datasets/ordered_cat_bw/image_data"
+        )
+        print("\nMean Delta Scores: ", np.mean(np.array(scores) - np.array(prev_scores)))
+        ac.log({
+            "mean_delta_scores" : np.mean(np.array(scores) - np.array(prev_scores)),
+        })
+        prev_scores = scores
+        probs, scores = score_images(
+            model=reward_model_trainer.model.module, 
+            processor=reward_model_trainer.processor, 
+            prompt=prompt, 
+            img_dir="/home/hayano/active_diffusion/poc_datasets/ordered_cat_bw/image_data"
+        )
         ddpo_trainer.train(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+
+    # iteration = 0
+    # samples, prompts = ddpo_trainer.sample(logger=logger, epoch=iteration, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+    # _, prev_scores = score_images(
+    #     model=reward_model_trainer.model.module, 
+    #     processor=reward_model_trainer.processor, 
+    #     prompt=prompt, 
+    #     img_dir="/home/hayano/active_diffusion/poc_datasets/ordered_cat_bw/image_data"
+    # )
+    # while True:
+    #     print("\niteration", iteration)
+    #     reward_model_trainer.train(image_batch=samples, epoch=iteration, prompts=prompts, logger=logger)
+    #     _, scores = score_images(
+    #         model=reward_model_trainer.model.module, 
+    #         processor=reward_model_trainer.processor, 
+    #         prompt=prompt, 
+    #         img_dir="/home/hayano/active_diffusion/poc_datasets/ordered_cat_bw/image_data"
+    #     )
+    #     print("\nDelta Scores: ", np.array(scores) - np.array(prev_scores))
+    #     prev_scores = scores
 
 if __name__ == "__main__":
     # app.run(main)

@@ -59,8 +59,8 @@ class BaseAcceleratorConfig:
     seed: int = 42
     # resume_from_checkpoint: bool = True
     resume_from_checkpoint: bool = False
-    max_steps: int = 500
-    num_epochs: int = 10
+    max_steps: int = 250
+    num_epochs: int = 5
     validate_steps: int = 100
     eval_on_start: bool = True
     project_name: str = "reward"

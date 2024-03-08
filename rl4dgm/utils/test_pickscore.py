@@ -8,6 +8,51 @@ from transformers import AutoProcessor, AutoModel
 from PIL import Image
 from datasets import load_dataset
 
+def score_images(model, img_dir, prompt, processor):
+    def calc_probs(prompt, images):
+        device = "cuda"
+        # preprocess
+        image_inputs = processor(
+            images=images,
+            padding=True,
+            truncation=True,
+            max_length=77,
+            return_tensors="pt",
+        ).to(device)
+        
+        text_inputs = processor(
+            text=prompt,
+            padding=True,
+            truncation=True,
+            max_length=77,
+            return_tensors="pt",
+        ).to(device)
+
+
+        with torch.no_grad():
+            # embed
+            image_embs = model.get_image_features(**image_inputs)
+            image_embs = image_embs / torch.norm(image_embs, dim=-1, keepdim=True)
+        
+            text_embs = model.get_text_features(**text_inputs)
+            text_embs = text_embs / torch.norm(text_embs, dim=-1, keepdim=True)
+        
+            # score
+            scores = model.logit_scale.exp() * (text_embs @ image_embs.T)[0]
+            
+            # get probabilities if you have multiple images to choose from
+            probs = torch.softmax(scores, dim=-1)
+        
+        return probs.cpu().tolist(), scores.cpu().tolist()
+
+    scores = {}
+    imgs = []
+    img_names = os.listdir(img_dir)
+    for img in img_names:
+        imgs.append(Image.open(os.path.join(img_dir, img)))
+
+    probs, scores = calc_probs(images=imgs, prompt=prompt)
+    return probs, scores
 
 def score_and_save_images(prompt, img_dir, img_save_dir, hf_model_path, ckpt_path=None):    
 
