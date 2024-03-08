@@ -23,6 +23,7 @@ from diffusers import DiffusionPipeline
 from transformers import AutoProcessor, AutoModel
 
 from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
+from rl4dgm.user_feedback_interface.preference_functions import ColorPreference
 from rl4dgm.utils.query_generator import QueryGenerator
 from rl4dgm.utils.create_dummy_dataset import preference_from_ranked_prompts, preference_from_keyphrases
 
@@ -83,6 +84,8 @@ class PickScoreTrainer:
         # initialize feedback interface 
         if cfg.query_conf.feedback_agent == "human":
             self.feedback_interface = HumanFeedbackInterface()
+        elif cfg.query_conf.feedback_agent == "ai":
+            self.feedback_interface = AIFeedbackInterface(preference_function=ColorPreference)
         else:
             raise Exception(f"human is the only feedback agent currently supported. Got {cfg.query_conf.feedback_agent}")
 
@@ -124,7 +127,7 @@ class PickScoreTrainer:
             collate_fn=dataset.collate_fn,
             num_workers=cfg.num_workers,
         )
-        return trainloader
+        return trainloadepreference_functionr
 
     def load_dataloaders(self, cfg: DictConfig, split=None) -> Any:
         """

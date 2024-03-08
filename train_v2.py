@@ -45,9 +45,9 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
     # breakpoint()
     # dummy reward model
-    processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
-    processor = AutoProcessor.from_pretrained(processor_name_or_path)
-    reward_model = AutoModel.from_pretrained(pretrained_model_name_or_path="yuvalkirstain/PickScore_v1").to("cuda").eval()
+    # processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
+    # processor = AutoProcessor.from_pretrained(processor_name_or_path)
+    # reward_model = AutoModel.from_pretrained(pretrained_model_name_or_path="yuvalkirstain/PickScore_v1").to("cuda").eval()
     # reward_accelerator = instantiate_with_cfg(cfg.accelerator)
     # print("\nACCELERATE_USE_DEEPSPEED: ", os.environ.get("ACCELERATE_USE_DEEPSPEED"))
     # print("\nReward accelerator: ", reward_accelerator)
@@ -70,7 +70,7 @@ def main(cfg: TrainerConfig) -> None:
 
     ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger, accelerator=ac.accelerator)#, dummy_loader=dummy_loader)
     reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
-    prompt = "a cute cat" # TODO - get from user input?
+    # prompt = "a cute cat" # TODO - get from user input?
 
     _, prev_scores = score_images(
         model=reward_model_trainer.model.module, 
