@@ -318,12 +318,14 @@ class DDPOTrainer:
             position=0,
         ):
             # generate prompts
-            prompts, prompt_metadata = zip(
-                *[
-                    self.prompt_fn()
-                    for _ in range(self.config.sample_batch_size)
-                ]
-            )
+            # original prompts function that sample a prompt at a time
+            # prompts, prompt_metadata = zip(
+                # *[
+                    # self.prompt_fn()
+                    # for _ in range(self.config.sample_batch_size)
+                # ]
+            # )
+            prompts = self.prompt_fn(self.config.sample_batch_size)
 
             # encode prompts
             prompt_ids = self.pipeline.tokenizer(
@@ -625,8 +627,9 @@ class DDPOTrainer:
 
             # make sure we did an optimization step at the end of the inner epoch
             assert self.accelerator.sync_gradients
-
-        if epoch != 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
-            self.accelerator.save_state()
+        # TODO #
+        # Does not support model saving now
+        # if epoch != 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
+            # self.accelerator.save_state()
 
         return epoch

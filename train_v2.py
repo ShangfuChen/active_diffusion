@@ -28,9 +28,26 @@ from transformers import AutoProcessor, AutoModel
 from trainer.configs.configs import TrainerConfig, instantiate_with_cfg
 import tqdm
 import torch
+import numpy as np
 import os
 
 logger = get_logger(__name__)
+
+
+def eval_samples(accelerator, images):
+    """
+    Evaluation function to calculate scores for generated image samples
+    Args:
+        accelerator (accelerate.Accelerator) : pass in for logging results
+        images (Tensor) : a batch of images 
+    """
+    images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
+    images = images[:, 0, :, :]
+    score = np.mean(images)
+    accelerator.log(
+        {"eval_score": score}
+    )
+
 
 ###### Main training loop ######
 @hydra.main(version_base=None, config_path="PickScore/trainer/conf", config_name="config")
@@ -69,12 +86,14 @@ def main(cfg: TrainerConfig) -> None:
     reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
     # prompt = "a cute cat" # TODO - get from user input?
 
-    for loop in range(5):
+    for loop in range(50):
         print("Loop epoch ", loop)
         samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
-        
+
         reward_model_trainer.train(image_batch=samples, epoch=loop, prompts=prompts, logger=logger)
+        eval_samples(ac.accelerator, samples)
         ddpo_trainer.train(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+
 
 if __name__ == "__main__":
     # app.run(main)

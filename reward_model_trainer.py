@@ -239,9 +239,10 @@ class PickScoreTrainer:
                     # TODO - validation dataset can be accumulation of all previous human feedbacks?
                     pass
                     # self.evaluate(logger=logger)
-
-                if self.accelerator.should_save():
-                    self.accelerator.save_checkpoint()
+                # TODO #
+                # Skip model saving now
+                # if self.accelerator.should_save():
+                    # self.accelerator.save_checkpoint()
 
                 self.model.train()
 
@@ -270,14 +271,14 @@ class PickScoreTrainer:
                         lr = 0.0
 
                 self.accelerator.lr = lr
-                if self.accelerator.should_end():
-                    self.evaluate(logger=logger)
-                    self.accelerator.save_checkpoint()
-                    break
+                # if self.accelerator.should_end():
+                    # self.evaluate(logger=logger)
+                    # self.accelerator.save_checkpoint()
+                    # break
                 self.accelerator.step += 1
 
-            if self.accelerator.should_end():
-                break
+            # if self.accelerator.should_end():
+                # break
 
             self.accelerator.update_epoch()
 

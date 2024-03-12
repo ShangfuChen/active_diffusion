@@ -109,17 +109,17 @@ class QueryGenerator:
             return queries
         
         # handle case wehere prompts is list(tuple(str))
-        if type(prompts[0]) == tuple:
+        if type(prompts[0]) == tuple or type(prompts[0]) == list:
             prompts = [list(tup) for tup in prompts]
             prompts = [prompt for sublist in prompts for prompt in sublist]
-
         # otherwise, make sure each pair comes from the same prompt
         prompt_to_indices = {}
         for prompt in prompts:
             if not prompt in prompt_to_indices.keys():
-                prompt_to_indices[prompt] = np.where(np.array(prompts) == prompt)[0]
+                if (np.where(np.array(prompts) == prompt)[0]).shape[0] > 1: 
+                    prompt_to_indices[prompt] = np.where(np.array(prompts) == prompt)[0]
         query_prompts = random.choices(list(prompt_to_indices.keys()), k=n_queries)
-
+        
         for query_prompt in query_prompts:
             queries.append(random.sample(list(prompt_to_indices[query_prompt]), k=2))
         return queries, query_prompts

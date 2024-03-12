@@ -57,7 +57,7 @@ class DDPOTrainConfig:
     sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    sample_num_batches_per_epoch: int = 1
+    sample_num_batches_per_epoch: int = 4
     
     ###### Training ######
     # config.train = train = ml_collections.ConfigDict()
@@ -98,7 +98,8 @@ class DDPOTrainConfig:
     ###### Prompt Function ######
     # prompt function to use. see `prompts.py` for available prompt functions.
     # config.prompt_fn = "simple_animals"
-    prompt_fn: str = "cute_cats"
+    # prompt_fn: str = "cute_cats"
+    prompt_fn: str = "cute_animals"
     # kwargs to pass to the prompt function.
 
     ###### Reward Function ######

@@ -28,6 +28,23 @@ def from_file(path, low=None, high=None):
     return random.choice(prompts), {}
 
 
+def batch_prompts_from_file(path, n_samples, low=None, high=None):
+    prompts = _load_lines(path)[low:high]
+    n_prompts = len(prompts)
+    base_int = n_samples // n_prompts
+    remainder = n_samples % n_prompts
+    n_samples_per_prompt = [base_int] * n_prompts
+    for i in range(remainder):
+        n_samples_per_prompt[i] += 1
+    random.shuffle(n_samples_per_prompt)
+    return_prompts = []
+    for i in range(len(prompts)):
+        for n in range(n_samples_per_prompt[i]):
+            return_prompts.append(prompts[i])
+    random.shuffle(return_prompts)
+    return return_prompts
+
+
 def imagenet_all():
     return from_file("imagenet_classes.txt")
 
@@ -46,6 +63,10 @@ def simple_animals():
 
 def cute_cats():
     return from_file("cute_cats.txt")
+
+
+def cute_animals(n_samples):
+    return batch_prompts_from_file("cute_animals.txt", n_samples)
 
 
 def nouns_activities(nouns_file, activities_file):
