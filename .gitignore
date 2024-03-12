@@ -9,6 +9,7 @@ __pycache__/
 *.log
 *.parquet
 .hydra/
+train_v2_copy.py
 PickScore/.hydra/
 PickScore/trainer.egg-info/
 ddpo.egg-info/

@@ -30,6 +30,9 @@ import tqdm
 import torch
 import numpy as np
 import os
+import numpy as np
+
+from rl4dgm.utils.test_pickscore import score_images
 
 logger = get_logger(__name__)
 
@@ -86,14 +89,15 @@ def main(cfg: TrainerConfig) -> None:
     reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
     # prompt = "a cute cat" # TODO - get from user input?
 
-    for loop in range(50):
-        print("Loop epoch ", loop)
+    for loop in range(20):
         samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
-
+        
         reward_model_trainer.train(image_batch=samples, epoch=loop, prompts=prompts, logger=logger)
+    for loop in range(50)
+        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        
         eval_samples(ac.accelerator, samples)
         ddpo_trainer.train(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
-
 
 if __name__ == "__main__":
     # app.run(main)

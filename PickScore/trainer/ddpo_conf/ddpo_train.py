@@ -98,8 +98,8 @@ class DDPOTrainConfig:
     ###### Prompt Function ######
     # prompt function to use. see `prompts.py` for available prompt functions.
     # config.prompt_fn = "simple_animals"
-    # prompt_fn: str = "cute_cats"
-    prompt_fn: str = "cute_animals"
+    prompt_fn: str = "cute_cats"
+    # prompt_fn: str = "cute_animals"
     # kwargs to pass to the prompt function.
 
     ###### Reward Function ######

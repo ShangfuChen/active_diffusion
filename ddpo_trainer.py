@@ -319,13 +319,15 @@ class DDPOTrainer:
         ):
             # generate prompts
             # original prompts function that sample a prompt at a time
-            # prompts, prompt_metadata = zip(
-                # *[
-                    # self.prompt_fn()
-                    # for _ in range(self.config.sample_batch_size)
-                # ]
-            # )
-            prompts = self.prompt_fn(self.config.sample_batch_size)
+            prompts, prompt_metadata = zip(
+                *[
+                    self.prompt_fn()
+                    for _ in range(self.config.sample_batch_size)
+                ]
+            )
+
+            # for cute_animal only
+            # prompts = self.prompt_fn(self.config.sample_batch_size)
 
             # encode prompts
             prompt_ids = self.pipeline.tokenizer(
