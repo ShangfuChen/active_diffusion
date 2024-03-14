@@ -117,6 +117,60 @@ class PickScoreTrainer:
         self.accelerator.update_metrics(metrics)
         # accelerator.gradient_state.end_of_dataloader = end_of_train_dataloader
 
+    def color_evaluate(self, images, prompts, prefix):
+        ### TODO ###
+        # Calculate color score and log on wandb
+        self.model.eval()
+        concat_prompts = ()
+        for prompt in prompts:
+            concat_prompts += prompt
+        image_inputs = self.processor(
+            images=images,
+            padding=True,
+            truncation=True,
+            max_length=77,
+            return_tensors="pt",
+        ).to(self.accelerator.device)
+        
+        text_inputs = self.processor(
+            text=concat_prompts,
+            padding=True,
+            truncation=True,
+            max_length=77,
+            return_tensors="pt",
+        ).to(self.accelerator.device)
+        with torch.no_grad():
+            # embed
+            try:
+                image_embs = self.model.get_image_features(**image_inputs)
+                image_embs = image_embs / torch.norm(image_embs, dim=-1, keepdim=True)
+            
+                text_embs = self.model.get_text_features(**text_inputs)
+                text_embs = text_embs / torch.norm(text_embs, dim=-1, keepdim=True)
+            
+                # score
+                scores = self.model.logit_scale.exp() * (text_embs @ image_embs.T)[0]
+            except:
+                image_embs = self.model.module.get_image_features(**image_inputs)
+                image_embs = image_embs / torch.norm(image_embs, dim=-1, keepdim=True)
+            
+                text_embs = self.model.module.get_text_features(**text_inputs)
+                text_embs = text_embs / torch.norm(text_embs, dim=-1, keepdim=True)
+                # score
+                scores = self.model.module.logit_scale.exp() * (text_embs @ image_embs.T)[0]
+        scores = scores.reshape(2, -1).cpu()
+        predictions = (scores[0] > scores[1])
+        
+        images = (images * 255).round().clamp(0, 255).cpu()
+        images = images[:, 0, :, :]
+        red_scores = torch.mean(images, dim=(-2, -1))
+        red_scores = red_scores.reshape(2, -1)
+        labels = (red_scores[0] > red_scores[1])
+        correct = (predictions == labels).sum()
+        accuracy = correct/len(labels)
+        self.accelerator.log({f"reward model {prefix} accuracy: ": accuracy})
+
+
     def reinitialize_trainloader(self, cfg: DictConfig) -> Any:
         dataset = instantiate_with_cfg(cfg, split="train")
         should_shuffle = True
