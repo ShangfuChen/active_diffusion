@@ -82,7 +82,7 @@ def pickscore():
 Use pixel values from a channel as a dummy reward
 """
 def color_score():
-    def _fn(images, prompts, metadata):
+    def _fn(images, prompts):
         if isinstance(images, torch.Tensor):
             images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
             images = images[:, 0, :, :]
@@ -92,7 +92,7 @@ def color_score():
 
 
 def jpeg_incompressibility():
-    def _fn(images, prompts, metadata):
+    def _fn(images, prompts):
         if isinstance(images, torch.Tensor):
             images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
             images = images.transpose(0, 2, 3, 1)  # NCHW -> NHWC
@@ -104,12 +104,29 @@ def jpeg_incompressibility():
         return np.array(sizes), {}
     return _fn
 
-
+# NOTE: remove metadata args, which is only for llava and is not used here
 def jpeg_compressibility():
     jpeg_fn = jpeg_incompressibility()
 
-    def _fn(images, prompts, metadata):
-        rew, meta = jpeg_fn(images, prompts, metadata)
+    def _fn(images, prompts):
+        rew, meta = jpeg_fn(images, prompts)
         return -rew, meta
+
+    return _fn
+
+
+def aesthetic_score():
+    from ddpo.aesthetic_scorer import AestheticScorer
+
+    scorer = AestheticScorer(dtype=torch.float32).cuda()
+
+    def _fn(images, prompts):
+        if isinstance(images, torch.Tensor):
+            images = (images * 255).round().clamp(0, 255).to(torch.uint8)
+        else:
+            images = images.transpose(0, 3, 1, 2)  # NHWC -> NCHW
+            images = torch.tensor(images, dtype=torch.uint8)
+        scores = scorer(images)
+        return scores, {}
 
     return _fn

@@ -88,14 +88,27 @@ def main(cfg: TrainerConfig) -> None:
     ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger, accelerator=ac.accelerator)#, dummy_loader=dummy_loader)
     reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
     # prompt = "a cute cat" # TODO - get from user input?
+    # """
+    # Create a validation set with 200 images --> 100 pairs 
+    # """
+    # val_samples, val_prompts = ddpo_trainer.sample_num_batch(reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor, num_batch=25)
 
-    for loop in range(20):
-        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+    for loop in range(300):
+        # samples, prompts = ddpo_trainer.sample_num_batch(num_batch=4)
         
+        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop)
         reward_model_trainer.train(image_batch=samples, epoch=loop, prompts=prompts, logger=logger)
+        reward_model_trainer.color_evaluate(prefix='train')
+        reward_model_trainer.color_evaluate(prefix='validation')
         
+        # NOTE: this is just a temporary eval function for the red score
         # eval_samples(ac.accelerator, samples)
-        ddpo_trainer.train(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+
+        # TODO: when using other reward model (i.e., aesthetic predictor),
+        # reward_model is specified in the reward function, so the input model
+        # here is not used
+        # ddpo_trainer.train(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        # ddpo_trainer.train(logger=logger, epoch=loop, reward_model=None, processor=None)
 
 if __name__ == "__main__":
     # app.run(main)

@@ -233,6 +233,9 @@ class DDPOTrainer:
         )
 
         # prepare prompt and reward fn
+        # Add a flag for using pickscore reward function
+        # Because the inputs are different
+        self.use_pickscore = (config.reward_fn == 'pickscore')
         self.prompt_fn = getattr(ddpo.prompts, config.prompt_fn)
         self.reward_fn = getattr(ddpo.rewards, config.reward_fn)()
 
@@ -304,8 +307,10 @@ class DDPOTrainer:
         # set up tqdm
         self.tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
 
-    
-    def sample(self, logger, reward_model, processor, epoch):
+
+    # NOTE: Remove reward_model and processor args because reward calculation
+    # is move to train()
+    def sample(self, logger, epoch):
         # TODO logger
 
         self.pipeline.unet.eval()
@@ -374,7 +379,6 @@ class DDPOTrainer:
                         :, 1:
                     ],  # each entry is the latent after timestep t
                     "log_probs": log_probs,
-                    # "rewards": rewards, # this will be filled later in train()
                     "images": images,
                 }
             )
@@ -388,7 +392,9 @@ class DDPOTrainer:
     """
     Sample images and prompts with a given number of batch
     """
-    def sample_num_batch(self, reward_model, processor, num_batch):
+    # NOTE: Remove reward_model and processor args because reward calculation
+    # is move to train()
+    def sample_num_batch(self, num_batch):
         self.pipeline.unet.eval()
         samples = []
         prompts_list = []
@@ -457,12 +463,19 @@ class DDPOTrainer:
             disable=not self.accelerator.is_local_main_process,
             position=0,
         ):
-            rewards = self.executor.submit(self.reward_fn,
-                                      processor,
-                                      reward_model,
-                                      self.samples[i]["images"],
-                                      self.prompts[i],
-                                      device=self.accelerator.device)
+            if self.use_pickscore:
+                rewards = self.executor.submit(
+                                        self.reward_fn,
+                                        processor,
+                                        reward_model,
+                                        self.samples[i]["images"],
+                                        self.prompts[i],
+                                        device=self.accelerator.device)
+            else:
+                rewards = self.executor.submit(
+                                        self.reward_fn,
+                                        self.samples[i]["images"],
+                                        self.prompts[i])
             # yield to to make sure reward computation starts
             time.sleep(0)
     

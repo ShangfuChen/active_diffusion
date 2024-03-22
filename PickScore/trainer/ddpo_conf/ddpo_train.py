@@ -41,6 +41,7 @@ class DDPOTrainConfig:
     # config.pretrained = pretrained = ml_collections.ConfigDict()
     # base model to load. either a path to a local directory, or a model name from the HuggingFace model hub.
     pretrained_model: str = "runwayml/stable-diffusion-v1-5"
+    # pretrained_model: str = "stabilityai/stable-diffusion-2-1"
     # revision of the model to load.
     pretrained_revision: str = "main"
 
@@ -97,7 +98,7 @@ class DDPOTrainConfig:
 
     ###### Prompt Function ######
     # prompt function to use. see `prompts.py` for available prompt functions.
-    # config.prompt_fn = "simple_animals"
+    # prompt_fn: str = "simple_animals"
     prompt_fn: str = "cute_cats"
     # prompt_fn: str = "cute_animals"
     # kwargs to pass to the prompt function.
@@ -105,9 +106,10 @@ class DDPOTrainConfig:
     ###### Reward Function ######
     # reward function to use. see `rewards.py` for available reward functions.
     # checkpoint path for pickscore model
-    # config.reward_fn = "jpeg_compressibility"
-    # config.reward_fn = "color_score"
-    reward_fn: str = "pickscore"
+    # reward_fn: str = "jpeg_compressibility"
+    # reward_fn: str = "color_score"
+    reward_fn: str = "aesthetic_score"
+    # reward_fn: str = "pickscore"
     ckpt_path: str = "ddpo/trained_reward_model/checkpoint-final"
 
     ###### Per-Prompt Stat Tracking ######
