@@ -20,18 +20,33 @@ PROMPT_FONT = ImageFont.truetype("FreeMono.ttf", PROMPT_FONT_SIZE)
 
 class FeedbackTypes(IntEnum):
     PICK_ONE = 0
+    SCORE_ONE = 1
+
+class OutputTypes(IntEnum):
+    BINARY_PREFERENCE = 0
+    SCORE = 1
 
 DEFAULT_FEEDBACK_SETTINGS = {
     FeedbackTypes.PICK_ONE : {
         "n_options" : 2,
         "n_feedbacks" : 1,
     },
+    FeedbackTypes.SCORE_ONE : {
+        "n_options" : 1,
+        "n_feedbacks" : 1,
+        "score_range" : (1, 10),
+    },
+}
+
+FEEDBACK_TYPE_TO_ID = {
+    "pick-one" : FeedbackTypes.PICK_ONE,
+    "score-one" : FeedbackTypes.SCORE_ONE,
 }
 
 class FeedbackInterface:
     def __init__(
         self,
-        feedback_type=FeedbackTypes.PICK_ONE,
+        feedback_type="pick-one",
         query_image_size=(1024,1024),
         **kwargs,
     ):
@@ -44,10 +59,11 @@ class FeedbackInterface:
                 n_feedbacks (int) : number of feedbacks user must provide per query (defaults to 1)
         """
         self.query_image_size = query_image_size
-        self.feedback_type = feedback_type
-        self.feedback_args = self._initialize_feedback_settings(feedback_type, **kwargs)        
+        assert feedback_type in FEEDBACK_TYPE_TO_ID.keys(), f"feedback_type should be one of {FEEDBACK_TYPE_TO_ID.keys()}. Got {feedback_type}."
+        self.feedback_type = FEEDBACK_TYPE_TO_ID[feedback_type]
+        self.feedback_args = self._initialize_feedback_settings(self.feedback_type, **kwargs)        
 
-        # intialize dataframe (Pick-a-Pick style)
+        # intialize dataframe
         self.reset_dataset()
 
     def query(self, prompt, img_paths, **kwargs):
@@ -62,14 +78,14 @@ class FeedbackInterface:
         # confirm images and prompt are set
         n_images = len(img_paths)
 
-        # TODO - only supports binary preference feedback typefor now
-        assert n_images == 2, f"Expected 2 images for query. Got {n_images}."
+        expected_n_options = self.feedback_args["n_options"]
+        assert n_images == expected_n_options, f"Expected {expected_n_options} images for query. Got {n_images}."
 
         images = self._process_images(img_paths)
-        prompt = self._process_prompt(prompt)
+        prompt = self._process_prompts(prompt)
 
         # generate an image to display to user
-        self._save_query_image(images, prompt, img_save_path="query_image.png")
+        self._save_query_image(images, prompt[0], img_save_path="query_image.png")
 
         # get user feedback
         feedback = self._get_feedback(prompt=prompt, img_paths=img_paths, **kwargs)
@@ -88,6 +104,7 @@ class FeedbackInterface:
             query_indices (list(list(int))) : list of queries where each entry is [idx0, idx1] of images to query
         """
         prompts = self._process_prompts(prompts=prompts)
+        feedbacks = []
 
         for query, prompt in zip(query_indices, prompts):
             # Get query images in PIL format 
@@ -103,11 +120,13 @@ class FeedbackInterface:
             )
             # Get feedback
             feedback = self._get_feedback(prompt=prompt, images=[im0, im1])
+            feedbacks.append(feedback)
 
             # Append query + feedback to self.df
             self._store_feedback(feedback=feedback, images=[im0, im1], prompt=prompt)
-        
 
+            return feedbacks # in case getting values directly is more convenient than saving as datafile
+        
     def save_dataset(self, dataset_save_path):
         """
         Save content currently in self.df to .parquet file
@@ -121,15 +140,27 @@ class FeedbackInterface:
         """
         Clear current content of dataframe
         """
-        self.df = pd.DataFrame(
-            columns=[
-                "are_different", "best_image_uid", "caption", "created_at", "has_label",
-                "image_0_uid", "image_0_url", "image_1_uid", "image_1_url",
-                "jpg_0", "jpg_1",
-                "label_0", "label_1", "model_0", "model_1",
-                "ranking_id", "user_id", "num_example_per_prompt", #"__index_level_0__",
-            ],
-        )
+        if self.feedback_args["output_type"] == OutputTypes.BINARY_PREFERENCE:
+            # initialize Pick-a-Pic style dataset for "binary preference" output type
+            self.df = pd.DataFrame(
+                columns=[
+                    "are_different", "best_image_uid", "caption", "created_at", "has_label",
+                    "image_0_uid", "image_0_url", "image_1_uid", "image_1_url",
+                    "jpg_0", "jpg_1",
+                    "label_0", "label_1", "model_0", "model_1",
+                    "ranking_id", "user_id", "num_example_per_prompt", #"__index_level_0__",
+                ],
+            )
+
+        elif self.feedback_args["output_type"] == OutputTypes.SCORE:
+            # initialize dataset to store image and score for "score" output type
+            self.df = pd.DataFrame(
+                columns=[
+                    "caption", "created_at", "has_label",
+                    "jpg_0",
+                    "score", "model",
+                ],
+            )
 
     def _initialize_feedback_settings(self, feedback_type, **kwargs):
         """
@@ -139,6 +170,7 @@ class FeedbackInterface:
             kwargs (dict) : appropriate arguments for selected feedback type
         """
         feedback_args = {}
+        feedback_args["type"] = feedback_type
         if feedback_type == FeedbackTypes.PICK_ONE:
             if "n_options" in kwargs.keys() and kwargs["n_options"] > 1:
                print("Setting n_options to", kwargs["n_options"])
@@ -149,6 +181,13 @@ class FeedbackInterface:
 
             print("n_feedbacks for PICK_ONE feedback type is 1")
             feedback_args["n_feedbacks"] = DEFAULT_FEEDBACK_SETTINGS[FeedbackTypes.PICK_ONE]["n_feedbacks"]
+            feedback_args["output_type"] = OutputTypes.BINARY_PREFERENCE
+
+        elif feedback_type == FeedbackTypes.SCORE_ONE:
+            feedback_args["n_options"] = DEFAULT_FEEDBACK_SETTINGS[FeedbackTypes.SCORE_ONE]["n_options"]
+            feedback_args["n_feedbacks"] = DEFAULT_FEEDBACK_SETTINGS[FeedbackTypes.SCORE_ONE]["n_feedbacks"]
+            feedback_args["score_range"] = kwargs["score_range"] if "score_range" in kwargs.keys() else DEFAULT_FEEDBACK_SETTINGS[FeedbackTypes.SCORE_ONE]["score_range"]
+            feedback_args["output_type"] = OutputTypes.SCORE
 
         return feedback_args
 
@@ -270,45 +309,64 @@ class FeedbackInterface:
             prompt (str) : text prompt
         """
 
-        img_paths = images.copy()
-        if not type(images[0]) == str:
-            img_paths[0] = "tmp_im0.jpg"
-            img_paths[1] = "tmp_im1.jpg"
-            images[0].save(img_paths[0])
-            images[1].save(img_paths[1])
+        if self.feedback_args["output_type"] == OutputTypes.BINARY_PREFERENCE:
+            img_paths = images.copy()
+            if not type(images[0]) == str:
+                img_paths[0] = "tmp_im0.jpg"
+                img_paths[1] = "tmp_im1.jpg"
+                images[0].save(img_paths[0])
+                images[1].save(img_paths[1])
 
-        # TODO currently only supports binary feedback preference
-        are_different = not img_paths[0] == img_paths[1]
-        best_image_uid = ""
-        created_at = datetime.now()
-        has_label = True
-        image_0_uid = "0"
-        image_0_url = ""
-        image_1_uid = "1"
-        image_1_url = ""
+            are_different = not img_paths[0] == img_paths[1]
+            best_image_uid = ""
+            created_at = datetime.now()
+            has_label = True
+            image_0_uid = "0"
+            image_0_url = ""
+            image_1_uid = "1"
+            image_1_url = ""
 
-        with open(img_paths[0], "rb") as img0:
-            jpg_0 = img0.read()
+            with open(img_paths[0], "rb") as img0:
+                jpg_0 = img0.read()
 
-        with open(img_paths[1], "rb") as img1:
-            jpg_1 = img1.read()
+            with open(img_paths[1], "rb") as img1:
+                jpg_1 = img1.read()
 
-        # TODO - there is no option for "no preference"
-        label0, label1 = feedback
-        model0 = ""
-        model1 = ""
-        ranking_id = 0
-        user_id = 0
-        num_example_per_prompt = 1
+            # TODO - there is no option for "no preference"
+            label0, label1 = feedback
+            model0 = ""
+            model1 = ""
+            ranking_id = 0
+            user_id = 0
+            num_example_per_prompt = 1
+            
+            self.df.loc[len(self.df.index)] = [
+                are_different, best_image_uid, prompt, created_at, has_label,
+                image_0_uid, image_0_url, image_1_uid, image_1_url,
+                jpg_0, jpg_1,
+                label0, label1, model0, model1,
+                ranking_id, user_id, num_example_per_prompt,
+            ]
         
-        self.df.loc[len(self.df.index)] = [
-            are_different, best_image_uid, prompt, created_at, has_label,
-            image_0_uid, image_0_url, image_1_uid, image_1_url,
-            jpg_0, jpg_1,
-            label0, label1, model0, model1,
-            ranking_id, user_id, num_example_per_prompt,
-        ]
-    
+        elif self.feedback_args["output_type"] == OutputTypes.SCORE:
+            img_paths = images.copy()
+            if not type(images[0]) == str:
+                img_paths[0] = "tmp_im0.jpg"
+                images[0].save(img_paths[0])
+            with open(img_paths[0], "rb") as img0:
+                jpg_0 = img0.read()
+            
+            caption = prompt
+            created_at = datetime.now()
+            has_label = True
+            score = feedback
+            model = ""
+
+            self.df.loc[len(self.df.index)] = [
+                caption, created_at, has_label,
+                jpg_0,
+                score, model,
+            ]
     
 class AIFeedbackInterface(FeedbackInterface):
     """
@@ -376,27 +434,79 @@ class HumanFeedbackInterface(FeedbackInterface):
         Returns:
             feedback (tuple(float)) : (label0, label1) indicating which image was choosen by user
         """
-        n_options = 2 # TODO - hardcoded for now (only allow binary preference feedback)
+
+        # Get list of valid options depending on feedback type
+        n_options = self.feedback_args["n_options"]
+        n_feedbacks = self.feedback_args["n_feedbacks"]
+        if self.feedback_args["type"] == FeedbackTypes.PICK_ONE:
+            valid_options = np.arange(1, n_options + 1).tolist()
+        elif self.feedback_args["type"] == FeedbackTypes.SCORE_ONE:
+            score_range = self.feedback_args["score_range"]
+            valid_options = np.arange(score_range[0], score_range[1] + 1).tolist()
+
+        # Prompt user for feedback
         input_str = "-1"
-        valid_options = np.arange(1, n_options + 1).tolist()
+
         while True:
             try:
                 input_int = int(input_str)
             except: 
-                input_str = input(f"Input is not an integer. Enter a number from 1 to {n_options} corresponding to the image that best matches the prompt.\n")
+                input_str = input(f"Input is not an integer. Enter a number from {valid_options[0]} to {valid_options[-1]}.\n")
             if input_int in valid_options:
                 break
-            input_str = input(f"Enter a number from 1 to {n_options} corresponding to the image that best matches the prompt.\n")
+            input_str = input(f"Enter a number from {valid_options[0]} to {valid_options[-1]}.\n")
 
-        if input_str == "1":
-            label0 = 1
-            label1 = 0
-        elif input_str == "2":
-            label0 = 0
-            label1 = 1
-        elif input_str == "0":
-            label0 = 0.5
-            label1 = 0.5
+        # Get final output 
+        if self.feedback_args["output_type"] == OutputTypes.BINARY_PREFERENCE:
+            # "binary preference" output type returns labels for images 0 and 1
+            if input_str == "1":
+                label0 = 1
+                label1 = 0
+            elif input_str == "2":
+                label0 = 0
+                label1 = 1
+            elif input_str == "0":
+                label0 = 0.5
+                label1 = 0.5
+            return (label0, label1)
 
-        return (label0, label1)
+        elif self.feedback_args["output_type"] == OutputTypes.SCORE:
+            # "score" output type returns a score for the input sample
+            return int(input_str)
+
+
+
+    # def _get_feedback(self, **kwargs):
+    #     """
+    #     Prompts the user to input feedback
+
+    #     Args:
+    #         n_options (int) : number of valid options for the user (choices are numbered from 1 to n_options) 
+
+    #     Returns:
+    #         feedback (tuple(float)) : (label0, label1) indicating which image was choosen by user
+    #     """
+    #     n_options = 2 # TODO - hardcoded for now (only allow binary preference feedback)
+    #     input_str = "-1"
+    #     valid_options = np.arange(1, n_options + 1).tolist()
+    #     while True:
+    #         try:
+    #             input_int = int(input_str)
+    #         except: 
+    #             input_str = input(f"Input is not an integer. Enter a number from 1 to {n_options} corresponding to the image that best matches the prompt.\n")
+    #         if input_int in valid_options:
+    #             break
+    #         input_str = input(f"Enter a number from 1 to {n_options} corresponding to the image that best matches the prompt.\n")
+
+    #     if input_str == "1":
+    #         label0 = 1
+    #         label1 = 0
+    #     elif input_str == "2":
+    #         label0 = 0
+    #         label1 = 1
+    #     elif input_str == "0":
+    #         label0 = 0.5
+    #         label1 = 0.5
+
+    #     return (label0, label1)
 
