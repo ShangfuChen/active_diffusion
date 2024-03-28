@@ -364,7 +364,15 @@ class DDPOTrainer:
                 self.config.sample_batch_size, 1
             )  # (batch_size, num_steps)
 
-            # NOTE Reward computation is ommitted here. Reward computation with newest reward model is done in train()
+            # NOTE don't need reward computation here if reward a separate reward model is trained in the loop
+            rewards = None
+            if not self.use_pickscore:
+                # compute rewards from AI evaluator
+                rewards = self.executor.submit(
+                    self.reward_fn,
+                    images,
+                    prompts,
+                )
 
             # store the list form to self.samples
             self.samples.append(
@@ -380,14 +388,32 @@ class DDPOTrainer:
                     ],  # each entry is the latent after timestep t
                     "log_probs": log_probs,
                     "images": images,
+                    "rewards" : rewards,
                 }
             )
             self.prompts.append(prompts)
 
+        # wait for all rewards to be computed
+        for sample in self.tqdm(
+            self.samples,
+            desc="Waiting for rewards",
+            disable=not self.accelerator.is_local_main_process,
+            position=0,
+        ):
+            rewards, reward_metadata = sample["rewards"].result()
+            # # accelerator.print(reward_metadata)
+            # sample["rewards"] = torch.as_tensor(rewards, device=self.accelerator.device)
+
         # return tensor of images
         samples = torch.cat([sample["images"] for sample in self.samples])
-        return samples, self.prompts
+        features = torch.cat([sample["latents"] for sample in self.samples])
 
+        if not self.use_pickscore:
+            # if using frozen AI evaluator, return the image features and AI rewards along with the samples
+            return samples, features, self.prompts, rewards.tolist()
+        else:
+            # if using trainable reward model (pickscore), rewards will be computed in the train loop after reward model has been updated
+            return samples, self.prompts
 
     """
     Sample images and prompts with a given number of batch

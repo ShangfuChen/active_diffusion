@@ -108,24 +108,63 @@ class FeedbackInterface:
 
         for query, prompt in zip(query_indices, prompts):
             # Get query images in PIL format 
-            idx0, idx1 = query
-            im0 = to_pil_image(image_batch[idx0])
-            im1 = to_pil_image(image_batch[idx1])
+            if type(query) == int:
+                query = [query]
+            images = [to_pil_image(image_batch[idx]) for idx in query]
+
+            # idx0, idx1 = query
+            # im0 = to_pil_image(image_batch[idx0])
+            # im1 = to_pil_image(image_batch[idx1])
 
             # Save query image for user
             self._save_query_image(
-                images=[im0, im1],
+                images=images,
                 prompt=prompt,
                 img_save_path="query_image.png",
             )
             # Get feedback
-            feedback = self._get_feedback(prompt=prompt, images=[im0, im1])
+            feedback = self._get_feedback(prompt=prompt, images=images)
             feedbacks.append(feedback)
 
             # Append query + feedback to self.df
-            self._store_feedback(feedback=feedback, images=[im0, im1], prompt=prompt)
+            self._store_feedback(feedback=feedback, images=images, prompt=prompt)
 
             return feedbacks # in case getting values directly is more convenient than saving as datafile
+       
+
+    # def query_batch(self, prompts, image_batch, query_indices, **kwargs):
+    #     """
+    #     Version of query() that takes a batch of images in the form of tensor (B x C x H x W),
+    #     and a list of index-pairs to query
+
+    #     Args:
+    #         prompts (list(str)) : list of prompts corresponding to images in image_batch
+    #         image_batch (Tensor) : (B x C x H x W) tensor of images
+    #         query_indices (list(list(int))) : list of queries where each entry is [idx0, idx1] of images to query
+    #     """
+    #     prompts = self._process_prompts(prompts=prompts)
+    #     feedbacks = []
+
+    #     for query, prompt in zip(query_indices, prompts):
+    #         # Get query images in PIL format 
+    #         idx0, idx1 = query
+    #         im0 = to_pil_image(image_batch[idx0])
+    #         im1 = to_pil_image(image_batch[idx1])
+
+    #         # Save query image for user
+    #         self._save_query_image(
+    #             images=[im0, im1],
+    #             prompt=prompt,
+    #             img_save_path="query_image.png",
+    #         )
+    #         # Get feedback
+    #         feedback = self._get_feedback(prompt=prompt, images=[im0, im1])
+    #         feedbacks.append(feedback)
+
+    #         # Append query + feedback to self.df
+    #         self._store_feedback(feedback=feedback, images=[im0, im1], prompt=prompt)
+
+    #         return feedbacks # in case getting values directly is more convenient than saving as datafile
         
     def save_dataset(self, dataset_save_path):
         """
