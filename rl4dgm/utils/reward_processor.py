@@ -85,7 +85,7 @@ class RewardProcessor:
             # get error values from existing data
             errors = np.array(self.human_dataset["reward_diff"])[most_similar_data_indices]
             # get input image indices where AI feedback is trustable. Use AI feedback directly for these samples
-            trust_ai_indices = np.where(errors < self.reward_error_thresh)[0]
+            trust_ai_indices = np.where(np.abs(errors) < self.reward_error_thresh)[0]
             trust_ai_indices = np.setdiff1d(trust_ai_indices, query_indices) # remove indices queried by humans
             final_rewards[trust_ai_indices] = ai_rewards[trust_ai_indices]
 
