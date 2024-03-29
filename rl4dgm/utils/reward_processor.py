@@ -10,9 +10,9 @@ class RewardProcessor:
     """
     def __init__(
         self,
-        distance_thresh,
-        distance_type,
-        reward_error_thresh,
+        distance_thresh=10.0,
+        distance_type="l2",
+        reward_error_thresh=2.0,
     ):
         """
         distance_thresh (float) : samples with similarity value above this is considered similar
@@ -33,28 +33,35 @@ class RewardProcessor:
         self.reward_error_thresh = reward_error_thresh
 
         self.human_dataset = {
-            "images" : [], # images or features
+            "features" : [], # image features
             "human_rewards" : [], # rewards from humans
             "ai_rewards" : [], # rewards from AI
             "reward_diff" : [], # Error of AI reward wrt human reward (R_human - R_AI)
         }
 
 
-    def compute_consensus_rewards(self, images, prompts, ai_rewards, feedback_interface):        
+    def compute_consensus_rewards(self, images, prompts, ai_rewards, feedback_interface, features=None):        
         """
         Args:
-            images (Tensor) : features or images to compute consensus rewards on. First dimension should be batch size
+            images (Tensor) : images to compute consensus rewards on. First dimension should be batch size
+            features (Tensor) : image features to use for similarity computation. If not provided, images will be used instead
             prompts (list(str)) : list of prompts corresponding to each of the input images
             ai_rewards (list(float or int)) : AI rewards for the images in question
             feedback_interface (rl4dgm.user_feedback_interface.FeedbackInterface) : user feedback interface to query human
         """
-        
+        if features is None:
+            features = images
+        if isinstance(ai_rewards, list):
+            ai_rewards = np.array(ai_rewards)
+
         ##### Compute similarity and determine samples to query human for #####
         if len(self.human_dataset["human_rewards"]) > 0:
-            distances, most_similar_data_indices = self.distance_fn(images)
+            distances, most_similar_data_indices = self.distance_fn(features)
             # apply threshold and get indices of samples to query
             query_indices = np.where(distances > self.distance_thresh)[0]
             no_query_indices = np.where(distances <= self.distance_thresh)[0]
+            print("query indices", query_indices)
+            print("no query indices", no_query_indices)
 
         else:
             print("Human dataset is empty. All samples will be queried to human evaluator.")
@@ -64,9 +71,9 @@ class RewardProcessor:
         ##### Aggregate human dataset #####
         human_rewards = feedback_interface.query_batch(prompts=prompts, image_batch=images, query_indices=query_indices)
         self.add_to_human_dataset(
-            images=images[query_indices],
+            features=features[query_indices],
             human_rewards=human_rewards,
-            ai_rewards=np.array(ai_rewards)[query_indices],
+            ai_rewards=ai_rewards[query_indices],
         )
 
         ##### Compute final rewards #####
@@ -76,26 +83,32 @@ class RewardProcessor:
 
         if no_query_indices is not None:
             # get error values from existing data
-            errors = np.array(self.human_dataset["reward_diff"][most_similar_data_indices])
+            errors = np.array(self.human_dataset["reward_diff"])[most_similar_data_indices]
             # get input image indices where AI feedback is trustable. Use AI feedback directly for these samples
-            trust_ai_indices = np.where(errors < self.reward_error_thresh)
+            trust_ai_indices = np.where(errors < self.reward_error_thresh)[0]
             trust_ai_indices = np.setdiff1d(trust_ai_indices, query_indices) # remove indices queried by humans
-            final_rewards[trust_ai_indices] = np,array(ai_rewards)[trust_ai_indices]
+            final_rewards[trust_ai_indices] = ai_rewards[trust_ai_indices]
 
             # get input image indices where AI feedback is not trustable
-            postprocess_ai_indices = np.where(errors >= self.reward_error_thresh)
+            postprocess_ai_indices = np.where(errors >= self.reward_error_thresh)[0]
             postprocess_ai_indices = np.setdiff1d(postprocess_ai_indices, query_indices) # remove indices queried by humans
-            postprocessed_ai_rewards = np.array(ai_rewards)[postprocess_ai_indices] + errors[postprocess_ai_rewards]
-            final_rewards[postprocess_ai_indices] = postprocess_ai_rewards
+            postprocessed_ai_rewards = ai_rewards[postprocess_ai_indices] + errors[postprocess_ai_indices]
+            final_rewards[postprocess_ai_indices] = postprocessed_ai_rewards
+
+            print("Trusted AI for indices", trust_ai_indices)
+            print("Corrected AI for indices", postprocess_ai_indices)
+            print("AI rewards before correction", ai_rewards[postprocess_ai_indices])
+            print("Corrections", errors[postprocess_ai_indices])
+            print("most similar images", most_similar_data_indices)
 
         return final_rewards
 
-    def add_to_human_dataset(self, images, human_rewards, ai_rewards):
+    def add_to_human_dataset(self, features, human_rewards, ai_rewards):
         """
         Add new datapoints to human dataset. 
         
         Args:
-            images (Tensor) : features or images to add to the dataset. First dimension should be batch size
+            features (Tensor) : image features to add to the dataset. First dimension should be batch size
             human_rewards (list(float or int) or array(float or int)) : human rewards for the input images
             ai_rewards (list(float or int) or array(float or int)) : AI rewards for the input images
         """
@@ -103,10 +116,10 @@ class RewardProcessor:
         # Cast inputs to list
         if type(human_rewards) == np.ndarray:
             human_rewards = human_rewards.tolist()
-        if type(ai_rewards) == np.ai_rewards:
+        if type(ai_rewards) == np.ndarray:
             ai_rewards = ai_rewards.tolist()
 
-        self.human_dataset["images"] += [im for im in images]
+        self.human_dataset["features"] += [feature for feature in features]
         self.human_dataset["human_rewards"] += human_rewards
         self.human_dataset["ai_rewards"] += ai_rewards
         error = np.array(human_rewards) - np.array(ai_rewards)
@@ -118,7 +131,7 @@ class RewardProcessor:
     # DISTANCE METRICS #
     ##################################################
 
-    def _compute_l2_distance(self, images):
+    def _compute_l2_distance(self, features):
         """
         Computes L2 distance between input images and each of the images in the human dataset to find the most similar sample
         Args:
@@ -131,15 +144,15 @@ class RewardProcessor:
         min_distances = []
         most_similar_data_indices = []
 
-        for im in images:
+        for feature in features:
             # compute distance to all images in the human dataset
-            dists = torch.cdist(im, images, p=2.0).mean(dim=tuple(np.arange(1, features.dim())))
+            dists = torch.cdist(feature, features, p=2.0).mean(dim=tuple(np.arange(1, features.dim())))
             # save the smallest distance
             smallest_dist = dists.min(dim=0)
             min_distances.append(smallest_dist.values.item())
             most_similar_data_indices.append(smallest_dist.indices.item())
 
-        return min_distances, most_similar_data_indices
+        return np.array(min_distances), np.array(most_similar_data_indices)
 
         
 

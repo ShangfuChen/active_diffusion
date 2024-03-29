@@ -3,10 +3,11 @@ User interface to provide and record human feedback
 """
 import os
 import datetime
-
 import numpy as np
 import random
 from enum import IntEnum
+from collections.abc import Iterable
+
 from PIL import Image, ImageDraw, ImageFont
 import pandas as pd
 from datetime import datetime
@@ -105,10 +106,9 @@ class FeedbackInterface:
         """
         prompts = self._process_prompts(prompts=prompts)
         feedbacks = []
-
         for query, prompt in zip(query_indices, prompts):
             # Get query images in PIL format 
-            if type(query) == int:
+            if not isinstance(query, Iterable):
                 query = [query]
             images = [to_pil_image(image_batch[idx]) for idx in query]
 
@@ -129,7 +129,7 @@ class FeedbackInterface:
             # Append query + feedback to self.df
             self._store_feedback(feedback=feedback, images=images, prompt=prompt)
 
-            return feedbacks # in case getting values directly is more convenient than saving as datafile
+        return feedbacks # in case getting values directly is more convenient than saving as datafile
        
 
     # def query_batch(self, prompts, image_batch, query_indices, **kwargs):
@@ -445,7 +445,7 @@ class HumanFeedbackInterface(FeedbackInterface):
     """
     def __init__(
         self,
-        feedback_type=FeedbackTypes.PICK_ONE,
+        feedback_type="pick-one",
         query_image_size=(1024,1024),
         **kwargs,
     ):
