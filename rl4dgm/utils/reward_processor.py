@@ -39,6 +39,11 @@ class RewardProcessor:
             "reward_diff" : [], # Error of AI reward wrt human reward (R_human - R_AI)
         }
 
+        self.total_n_human_feedback = 0
+        self.total_n_ai_feedback = 0
+        self.n_trusted_ai_feedback = 0
+        self.n_corrected_ai_feedback = 0
+
 
     def compute_consensus_rewards(self, images, prompts, ai_rewards, feedback_interface, features=None):        
         """
@@ -54,9 +59,11 @@ class RewardProcessor:
         if isinstance(ai_rewards, list):
             ai_rewards = np.array(ai_rewards)
 
+        print("AI rewards", ai_rewards)
         ##### Compute similarity and determine samples to query human for #####
         if len(self.human_dataset["human_rewards"]) > 0:
             distances, most_similar_data_indices = self.distance_fn(features)
+            print("minimum distnaces computed", distances)
             # apply threshold and get indices of samples to query
             query_indices = np.where(distances > self.distance_thresh)[0]
             no_query_indices = np.where(distances <= self.distance_thresh)[0]
@@ -68,6 +75,8 @@ class RewardProcessor:
             query_indices = np.arange(images.shape[0])
             no_query_indices = None
         
+        self.total_n_human_feedback += query_indices.shape[0]
+
         ##### Aggregate human dataset #####
         human_rewards = feedback_interface.query_batch(prompts=prompts, image_batch=images, query_indices=query_indices)
         self.add_to_human_dataset(
@@ -82,6 +91,9 @@ class RewardProcessor:
         final_rewards[query_indices] = np.array(human_rewards)
 
         if no_query_indices is not None:
+
+            self.total_n_ai_feedback += no_query_indices.shape[0]
+            
             # get error values from existing data
             errors = np.array(self.human_dataset["reward_diff"])[most_similar_data_indices]
             # get input image indices where AI feedback is trustable. Use AI feedback directly for these samples
@@ -95,11 +107,19 @@ class RewardProcessor:
             postprocessed_ai_rewards = ai_rewards[postprocess_ai_indices] + errors[postprocess_ai_indices]
             final_rewards[postprocess_ai_indices] = postprocessed_ai_rewards
 
+            self.n_trusted_ai_feedback += trust_ai_indices.shape[0]
+            self.n_corrected_ai_feedback += postprocess_ai_indices.shape[0]
+
             print("Trusted AI for indices", trust_ai_indices)
             print("Corrected AI for indices", postprocess_ai_indices)
             print("AI rewards before correction", ai_rewards[postprocess_ai_indices])
             print("Corrections", errors[postprocess_ai_indices])
             print("most similar images", most_similar_data_indices)
+        
+        print("Total human feedback:", self.total_n_human_feedback)
+        print("Total AI feedback:", self.total_n_ai_feedback)
+        print("Trusted AI feedback:", self.n_trusted_ai_feedback)
+        print("Corrected AI feedback:", self.n_corrected_ai_feedback)
 
         return final_rewards
 

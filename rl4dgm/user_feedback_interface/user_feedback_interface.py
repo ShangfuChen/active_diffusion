@@ -490,10 +490,10 @@ class HumanFeedbackInterface(FeedbackInterface):
             try:
                 input_int = int(input_str)
             except: 
-                input_str = input(f"Input is not an integer. Enter a number from {valid_options[0]} to {valid_options[-1]}.\n")
+                input_str = input(f"Input is not an integer. Enter a number from {valid_options[0]} to {valid_options[-1]}.")
             if input_int in valid_options:
                 break
-            input_str = input(f"Enter a number from {valid_options[0]} to {valid_options[-1]}.\n")
+            input_str = input(f"Enter a number from {valid_options[0]} to {valid_options[-1]}.")
 
         # Get final output 
         if self.feedback_args["output_type"] == OutputTypes.BINARY_PREFERENCE:
