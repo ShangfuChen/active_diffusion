@@ -90,7 +90,7 @@ class RewardProcessor:
             final_rewards[trust_ai_indices] = ai_rewards[trust_ai_indices]
 
             # get input image indices where AI feedback is not trustable
-            postprocess_ai_indices = np.where(errors >= self.reward_error_thresh)[0]
+            postprocess_ai_indices = np.where(np.abs(errors) >= self.reward_error_thresh)[0]
             postprocess_ai_indices = np.setdiff1d(postprocess_ai_indices, query_indices) # remove indices queried by humans
             postprocessed_ai_rewards = ai_rewards[postprocess_ai_indices] + errors[postprocess_ai_indices]
             final_rewards[postprocess_ai_indices] = postprocessed_ai_rewards
