@@ -30,6 +30,7 @@ import tempfile
 from PIL import Image
 from transformers import AutoProcessor, AutoModel
 from PickScore.trainer.scripts.mystep_realtime import reward_model_setup, reward_train_step
+import torchvision
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -310,7 +311,7 @@ class DDPOTrainer:
 
     # NOTE: Remove reward_model and processor args because reward calculation
     # is move to train()
-    def sample(self, logger, epoch):
+    def sample(self, logger, epoch, save_images=False, img_save_dir="sampled_images"):
         # TODO logger
 
         self.pipeline.unet.eval()
@@ -410,6 +411,10 @@ class DDPOTrainer:
         # return tensor of images
         samples = torch.cat([sample["images"] for sample in self.samples])
         features = torch.cat([sample["latents"] for sample in self.samples])
+
+        if save_images and self.accelerator.is_main_process:
+            self.save_batch_to_images(image_batch=samples, epoch=epoch, save_dir=img_save_dir)
+
         if not self.use_pickscore:
             # if using frozen AI evaluator, return the image features and AI rewards along with the samples
             return samples, features, self.prompts, all_rewards
@@ -979,3 +984,11 @@ class DDPOTrainer:
             # self.accelerator.save_state()
 
         return epoch
+
+    def save_batch_to_images(self, image_batch, epoch, save_dir):
+        save_folder = os.path.join(save_dir, f"epoch{epoch}")
+        print(f"saving images to {save_folder}")
+        os.mkdir(save_folder)
+        for i, im in enumerate(image_batch):
+            pil_im = torchvision.transforms.functional.to_pil_image(im)
+            pil_im.save(os.path.join(save_folder, f"{i}.jpg"))
