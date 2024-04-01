@@ -169,7 +169,8 @@ class RewardProcessor:
             # compute distance to all images in the human dataset
             # dists = torch.cdist(feature, features, p=2.0).mean(dim=tuple(np.arange(1, features.dim()))) # something is wrong with this
             # TODO - hardcoded scaling factor 100
-            dists = ((human_dataset_features - feature) / 100).pow(2).sum(dim=tuple(np.arange(1, features.dim())))
+            breakpoint()
+            dists = (human_dataset_features - feature).pow(2).mean(dim=tuple(np.arange(1, features.dim())))
             # save the smallest distance
             smallest_dist = dists.min(dim=0)
             min_distances.append(smallest_dist.values.item())
