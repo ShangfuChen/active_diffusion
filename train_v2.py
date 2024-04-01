@@ -28,11 +28,16 @@ from transformers import AutoProcessor, AutoModel
 from trainer.configs.configs import TrainerConfig, instantiate_with_cfg
 import tqdm
 import torch
+import torchvision
 import numpy as np
 import os
 import numpy as np
+from PIL import Image
+import datetime
 
 from rl4dgm.utils.test_pickscore import score_images
+from rl4dgm.utils.reward_processor import RewardProcessor
+from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface
 
 logger = get_logger(__name__)
 
@@ -60,42 +65,45 @@ def main(cfg: TrainerConfig) -> None:
     print("Config", cfg)
     print("\n\n", cfg.dataset.dataset_name)
     print("-"*50)
-    # breakpoint()
-    # dummy reward model
-    # processor_name_or_path = "laion/CLIP-ViT-H-14-laion2B-s32B-b79K"
-    # processor = AutoProcessor.from_pretrained(processor_name_or_path)
-    # reward_model = AutoModel.from_pretrained(pretrained_model_name_or_path="yuvalkirstain/PickScore_v1").to("cuda").eval()
-    # reward_accelerator = instantiate_with_cfg(cfg.accelerator)
-    # print("\nACCELERATE_USE_DEEPSPEED: ", os.environ.get("ACCELERATE_USE_DEEPSPEED"))
-    # print("\nReward accelerator: ", reward_accelerator)
-    # breakpoint()
-    # breakpoint()
-    # dummy_loader = reward_model_trainer.load_dataloaders(reward_model_trainer.cfg.dataset, split="train")
-    # breakpoint()
-    # from accelerate import Accelerator
-    # ac = Accelerator(
-    #     gradient_accumulation_steps=cfg.accelerator.gradient_accumulation_steps,
-    #     mixed_precision=cfg.accelerator.mixed_precision,
-    #     log_with=cfg.accelerator.log_with,
-    #     project_dir=cfg.accelerator.output_dir,
-    #     dynamo_backend=cfg.accelerator.dynamo_backend,
-    # )
-    # breakpoint()
 
-    from PickScore.trainer.configs.configs import TrainerConfig, instantiate_with_cfg
-    ac = instantiate_with_cfg(cfg.accelerator)
+    # create directories to save sampled images
+    img_save_dir = os.path.join("/home/hayano/sampled_images", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    os.mkdir(img_save_dir)
+    
+    
+    ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger, accelerator=None)#, dummy_loader=dummy_loader)
+    reward_processor = RewardProcessor(
+        distance_thresh=9.0,
+        distance_type="l2",
+        reward_error_thresh=2.0,
+    )
+    feedback_interface = HumanFeedbackInterface(feedback_type="score-one")
 
-    ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger, accelerator=ac.accelerator)#, dummy_loader=dummy_loader)
-    reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
+    # reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
     # prompt = "a cute cat" # TODO - get from user input?
 
     for loop in range(20):
-        samples, prompts = ddpo_trainer.sample(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        samples, features, prompts, ai_rewards = ddpo_trainer.sample(logger=logger, epoch=loop) #, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        save_batch_to_images(image_batch=samples, epoch=loop, save_dir=img_save_dir)
+        ai_rewards = [elem for sublist in ai_rewards for elem in sublist] # flatten list 
+        final_rewards = reward_processor.compute_consensus_rewards(
+            images=samples,
+            features=features,
+            prompts=["a cute cat"]*samples.shape[0],
+            ai_rewards=ai_rewards,
+            feedback_interface=feedback_interface,
+        )
         
-        reward_model_trainer.train(image_batch=samples, epoch=loop, prompts=prompts, logger=logger)
-        
-        # eval_samples(ac.accelerator, samples)
-        ddpo_trainer.train(logger=logger, epoch=loop, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        # dummy_rewards = np.ones(samples.shape[0]).tolist()
+        ddpo_trainer.train_from_reward_labels(logger=logger, epoch=loop, raw_rewards=final_rewards)
+
+def save_batch_to_images(image_batch, epoch, save_dir):
+    save_folder = os.path.join(save_dir, f"epoch{epoch}")
+    print(f"saving images to {save_folder}")
+    os.mkdir(save_folder)
+    for i, im in enumerate(image_batch):
+        pil_im = torchvision.transforms.functional.to_pil_image(im)
+        pil_im.save(os.path.join(save_folder, f"{i}.jpg"))
 
 if __name__ == "__main__":
     # app.run(main)
