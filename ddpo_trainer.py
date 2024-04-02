@@ -311,7 +311,7 @@ class DDPOTrainer:
 
     # NOTE: Remove reward_model and processor args because reward calculation
     # is move to train()
-    def sample(self, logger, epoch, save_images=False, img_save_dir="sampled_images", latents=None):
+    def sample(self, logger, epoch, save_images=False, img_save_dir="sampled_images", condition_latents=None):
         # TODO logger
 
         self.pipeline.unet.eval()
@@ -356,7 +356,7 @@ class DDPOTrainer:
                     num_inference_steps=self.config.sample_num_steps,
                     guidance_scale=self.config.sample_guidance_scale,
                     eta=self.config.sample_eta,
-                    latents=latents,
+                    latents=condition_latents,
                     output_type="pt",
                 )
 

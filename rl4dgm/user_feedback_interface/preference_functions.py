@@ -32,4 +32,4 @@ def ColorPickOne(**kwargs):
 
 def ColorScoreOne(**kwargs):
     im = np.array(kwargs['images'][0])
-    return (im[:, :, 0].mean() / 255 * 10)
+    return 1+(im[:, :, 0].mean() / 255 * 9)
