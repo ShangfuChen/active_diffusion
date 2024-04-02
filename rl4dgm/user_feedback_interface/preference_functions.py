@@ -18,7 +18,7 @@ Arg:
     prompt (str) : prompt corresponding to the image pair
     images (list(PILImage)) : a pair of images with the same prompt
 """
-def ColorPreference(**kwargs):
+def ColorPickOne(**kwargs):
     im0, im1 = kwargs['images']
     im0, im1 = np.array(im0), np.array(im1)
     if im0[:, :, 0].sum() > im1[:, :, 0].sum():
@@ -28,3 +28,8 @@ def ColorPreference(**kwargs):
         label0 = 0
         label1 = 1
     return (label0, label1)
+
+
+def ColorScoreOne(**kwargs):
+    im = np.array(kwargs['images'][0])
+    return (im[:, :, 0].mean() / 255 * 10)

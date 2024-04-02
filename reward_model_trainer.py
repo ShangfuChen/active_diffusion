@@ -23,7 +23,7 @@ from diffusers import DiffusionPipeline
 from transformers import AutoProcessor, AutoModel
 
 from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
-from rl4dgm.user_feedback_interface.preference_functions import ColorPreference
+from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne
 from rl4dgm.utils.query_generator import QueryGenerator
 from rl4dgm.utils.create_dummy_dataset import preference_from_ranked_prompts, preference_from_keyphrases
 
@@ -85,7 +85,7 @@ class PickScoreTrainer:
         if cfg.query_conf.feedback_agent == "human":
             self.feedback_interface = HumanFeedbackInterface()
         elif cfg.query_conf.feedback_agent == "ai":
-            self.feedback_interface = AIFeedbackInterface(preference_function=ColorPreference)
+            self.feedback_interface = AIFeedbackInterface(preference_function=ColorPickOne)
         else:
             raise Exception(f"human is the only feedback agent currently supported. Got {cfg.query_conf.feedback_agent}")
 

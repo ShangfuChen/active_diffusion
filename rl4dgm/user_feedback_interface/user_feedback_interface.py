@@ -112,10 +112,6 @@ class FeedbackInterface:
                 query = [query]
             images = [to_pil_image(image_batch[idx]) for idx in query]
 
-            # idx0, idx1 = query
-            # im0 = to_pil_image(image_batch[idx0])
-            # im1 = to_pil_image(image_batch[idx1])
-
             # Save query image for user
             self._save_query_image(
                 images=images,
