@@ -34,6 +34,7 @@ class RewardProcessor:
 
         self.human_dataset = {
             "features" : [], # image features
+            "noise_latents" : [], # image features
             "human_rewards" : [], # rewards from humans
             "ai_rewards" : [], # rewards from AI
             "reward_diff" : [], # Error of AI reward wrt human reward (R_human - R_AI)
@@ -45,7 +46,7 @@ class RewardProcessor:
         self.n_corrected_ai_feedback = 0
 
 
-    def compute_consensus_rewards(self, images, prompts, ai_rewards, feedback_interface, features=None):        
+    def compute_consensus_rewards(self, images, prompts, ai_rewards, feedback_interface, all_latents=None):        
         """
         Args:
             images (Tensor) : images to compute consensus rewards on. First dimension should be batch size
@@ -54,6 +55,10 @@ class RewardProcessor:
             ai_rewards (list(float or int)) : AI rewards for the images in question
             feedback_interface (rl4dgm.user_feedback_interface.FeedbackInterface) : user feedback interface to query human
         """
+        features = all_latents[:, -1, :, :, :]       
+        noise_latents = all_latents[:, 0, :, :, :]
+        batch_size = all_latents.shape[0]
+
         if features is None:
             features = images
         if isinstance(ai_rewards, list):
@@ -81,6 +86,7 @@ class RewardProcessor:
         human_rewards = feedback_interface.query_batch(prompts=prompts, image_batch=images, query_indices=query_indices)
         self.add_to_human_dataset(
             features=features[query_indices],
+            noise_latents=noise_latents[query_indices],
             human_rewards=human_rewards,
             ai_rewards=ai_rewards[query_indices],
         )
@@ -121,9 +127,15 @@ class RewardProcessor:
         print("Trusted AI feedback:", self.n_trusted_ai_feedback)
         print("Corrected AI feedback:", self.n_corrected_ai_feedback)
 
-        return final_rewards
+        # get idx with the top-{batch_size} human rewards
+        high_reward_idx = np.argpartition(self.human_dataset["human_rewards"], -batch_size)[-batch_size:]
+        high_reward_latents = torch.stack(
+            [self.human_dataset["noise_latents"][i] for i in high_reward_idx],
+            dim = 0)
+        return final_rewards, high_reward_latents
 
-    def add_to_human_dataset(self, features, human_rewards, ai_rewards):
+
+    def add_to_human_dataset(self, features, noise_latents, human_rewards, ai_rewards):
         """
         Add new datapoints to human dataset. 
         
@@ -140,6 +152,7 @@ class RewardProcessor:
             ai_rewards = ai_rewards.tolist()
 
         self.human_dataset["features"] += [feature for feature in features]
+        self.human_dataset["noise_latents"] += [latent for latent in noise_latents]
         self.human_dataset["human_rewards"] += human_rewards
         self.human_dataset["ai_rewards"] += ai_rewards
         error = np.array(human_rewards) - np.array(ai_rewards)
@@ -169,7 +182,6 @@ class RewardProcessor:
             # compute distance to all images in the human dataset
             # dists = torch.cdist(feature, features, p=2.0).mean(dim=tuple(np.arange(1, features.dim()))) # something is wrong with this
             # TODO - hardcoded scaling factor 100
-            breakpoint()
             dists = (human_dataset_features - feature).pow(2).mean(dim=tuple(np.arange(1, features.dim())))
             # save the smallest distance
             smallest_dist = dists.min(dim=0)
