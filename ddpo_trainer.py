@@ -311,14 +311,14 @@ class DDPOTrainer:
 
     # NOTE: Remove reward_model and processor args because reward calculation
     # is move to train()
-    def sample(self, logger, epoch, save_images=False, img_save_dir="sampled_images", condition_latents=None):
+    def sample(self, logger, epoch, save_images=False, img_save_dir="sampled_images", high_reward_latents=None):
         # TODO logger
 
         self.pipeline.unet.eval()
         self.samples = []
         self.prompts = []
         all_rewards = []
-
+        
         for i in self.tqdm(
             range(self.config.sample_num_batches_per_epoch),
             desc=f"Epoch {epoch}: sampling", # TODO
@@ -347,6 +347,14 @@ class DDPOTrainer:
             ).input_ids.to(self.accelerator.device)
             prompt_embeds = self.pipeline.text_encoder(prompt_ids)[0]
 
+            # Add a small perturbation on the high reward latents
+            if high_reward_latents is not None:
+                condition_latents = torch.split(high_reward_latents, self.config.sample_batch_size)[i]
+                condition_latents = 0.99995*condition_latents + 0.01*torch.randn(condition_latents.shape).to(self.accelerator.device).to(torch.float16)
+                # condition_latents = None
+            else:
+                condition_latents = None
+ 
             # sample
             with self.autocast():
                 images, _, latents, log_probs = pipeline_with_logprob(

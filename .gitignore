@@ -10,6 +10,7 @@ __pycache__/
 *.parquet
 .hydra/
 reward_model_trainer_copy.py
+train_v2.py
 PickScore/.hydra/
 PickScore/trainer.egg-info/
 ddpo.egg-info/

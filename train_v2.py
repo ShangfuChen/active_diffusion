@@ -37,7 +37,8 @@ import datetime
 
 from rl4dgm.utils.test_pickscore import score_images
 from rl4dgm.utils.reward_processor import RewardProcessor
-from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface
+from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne, ColorScoreOne
+from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
 
 logger = get_logger(__name__)
 
@@ -50,8 +51,7 @@ def eval_samples(accelerator, images):
         images (Tensor) : a batch of images 
     """
     images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-    images = images[:, 0, :, :]
-    score = np.mean(images)
+    score = np.mean(images[:, 0, :, :]) - np.mean(images[:, 1:, :, :])
     accelerator.log(
         {"eval_score": score}
     )
@@ -67,28 +67,43 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/hayano/sampled_images", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
-    os.mkdir(img_save_dir)
+    img_save_dir = os.path.join("/home/shangfu/sampled_images", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    if not os.path.exists(img_save_dir):
+        os.mkdir(img_save_dir)
     
     
     ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger, accelerator=None)#, dummy_loader=dummy_loader)
     reward_processor = RewardProcessor(
-        distance_thresh=9.0,
+        distance_thresh=0.,
         distance_type="l2",
-        reward_error_thresh=2.0,
+        reward_error_thresh=99.0,
     )
-    feedback_interface = HumanFeedbackInterface(feedback_type="score-one")
-
+    if cfg.query_conf.feedback_agent == "human":
+        feedback_interface = HumanFeedbackInterface(feedback_type="score-one")
+    elif cfg.query_conf.feedback_agent == "ai":
+        feedback_interface = AIFeedbackInterface(
+                                feedback_type="score-one",
+                                preference_function=ColorScoreOne)
+    
     # reward_model_trainer = PickScoreTrainer(cfg=cfg, logger=logger, accelerator=ac)
     # prompt = "a cute cat" # TODO - get from user input?
+    high_reward_latents = None
+    for loop in range(100):
+        samples, all_latents, prompts, ai_rewards = ddpo_trainer.sample(
+            logger=logger,
+            epoch=loop,
+            save_images=True,
+            img_save_dir=img_save_dir,
+            high_reward_latents=high_reward_latents) 
+        # reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
+        # features are latents for SD
 
-    for loop in range(20):
-        samples, features, prompts, ai_rewards = ddpo_trainer.sample(logger=logger, epoch=loop) #, reward_model=reward_model_trainer.model, processor=reward_model_trainer.processor)
-        save_batch_to_images(image_batch=samples, epoch=loop, save_dir=img_save_dir)
+        # NOTE: this is just a temporary eval function for the red score
+        eval_samples(ddpo_trainer.accelerator, samples)
         ai_rewards = [elem for sublist in ai_rewards for elem in sublist] # flatten list 
-        final_rewards = reward_processor.compute_consensus_rewards(
+        final_rewards, high_reward_latents = reward_processor.compute_consensus_rewards(
             images=samples,
-            features=features,
+            all_latents=all_latents,
             prompts=["a cute cat"]*samples.shape[0],
             ai_rewards=ai_rewards,
             feedback_interface=feedback_interface,
@@ -97,13 +112,6 @@ def main(cfg: TrainerConfig) -> None:
         # dummy_rewards = np.ones(samples.shape[0]).tolist()
         ddpo_trainer.train_from_reward_labels(logger=logger, epoch=loop, raw_rewards=final_rewards)
 
-def save_batch_to_images(image_batch, epoch, save_dir):
-    save_folder = os.path.join(save_dir, f"epoch{epoch}")
-    print(f"saving images to {save_folder}")
-    os.mkdir(save_folder)
-    for i, im in enumerate(image_batch):
-        pil_im = torchvision.transforms.functional.to_pil_image(im)
-        pil_im.save(os.path.join(save_folder, f"{i}.jpg"))
 
 if __name__ == "__main__":
     # app.run(main)
