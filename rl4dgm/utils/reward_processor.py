@@ -70,6 +70,10 @@ class RewardProcessor:
         self.total_n_human_feedback += human_query_indices.shape[0]
         self.total_n_ai_feedback += ai_query_indices.shape[0]
 
+        print("\nhuman indices", human_query_indices)
+        print("ai indices", ai_query_indices)
+        print("representative indices", representative_sample_indices)
+
         ##### Aggregate human dataset #####
         human_rewards = feedback_interface.query_batch(prompts=prompts, image_batch=images, query_indices=human_query_indices)
         self.add_to_human_dataset(
@@ -82,32 +86,31 @@ class RewardProcessor:
         final_rewards = np.zeros(images.shape[0])
         # use human rewards where we have them
         final_rewards[human_query_indices] = np.array(human_rewards)
-        print("human indices", human_query_indices)
-        print("ai indices", ai_query_indices)
-        print("representative indices", representative_sample_indices)
+
         if ai_query_indices.shape[0] > 0:
-            breakpoint()
             # get error values from existing data
             errors = np.array(self.human_dataset["reward_diff"])[representative_sample_indices]
             # get input image indices where AI feedback is trustable. Use AI feedback directly for these samples
             trust_ai_indices = np.where(np.abs(errors) < self.reward_error_thresh)[0]
-            trust_ai_indices = np.setdiff1d(trust_ai_indices, human_query_indices) # remove indices queried by humans
+            trust_ai_indices = ai_query_indices[trust_ai_indices]
             final_rewards[trust_ai_indices] = ai_rewards[trust_ai_indices]
 
             # get input image indices where AI feedback is not trustable
             postprocess_ai_indices = np.where(np.abs(errors) >= self.reward_error_thresh)[0]
-            postprocess_ai_indices = np.setdiff1d(postprocess_ai_indices, human_query_indices) # remove indices queried by humans
-            postprocessed_ai_rewards = ai_rewards[postprocess_ai_indices] + errors[postprocess_ai_indices]
+            errors_for_postprocessing = errors[postprocess_ai_indices]
+            postprocess_ai_indices = ai_query_indices[postprocess_ai_indices]
+            postprocessed_ai_rewards = ai_rewards[postprocess_ai_indices] + errors_for_postprocessing
             final_rewards[postprocess_ai_indices] = postprocessed_ai_rewards
-
             self.n_trusted_ai_feedback += trust_ai_indices.shape[0]
             self.n_corrected_ai_feedback += postprocess_ai_indices.shape[0]
 
             print("Trusted AI for indices", trust_ai_indices)
             print("Corrected AI for indices", postprocess_ai_indices)
             print("AI rewards before correction", ai_rewards[postprocess_ai_indices])
-            print("Corrections", errors[postprocess_ai_indices])
-            print("most similar images", most_similar_data_indices)
+            print("Corrections", errors_for_postprocessing)
+            print("Final rewards", final_rewards)
+
+            breakpoint()
         
         print("Total human feedback:", self.total_n_human_feedback)
         print("Total AI feedback:", self.total_n_ai_feedback)
@@ -350,16 +353,16 @@ class RewardProcessor:
         # Compute similarity to samples in human dataset
         human_dataset_features = torch.stack([f for f in self.human_dataset["features"]])
         distances, most_similar_data_indices = self.similarity_fn(features, human_dataset_features)
-        print("minimum distances computed", distances)
+        print("\nminimum distances computed", distances)
 
         # apply threshold and get indices of candidate samples to query
         # candidate_query_indices = np.array([0, 1, 2, 3, 4, 7])
         candidate_query_indices = np.where(distances > self.distance_thresh)[0] # indices for samples where similar sample exist in human dataset
         ai_query_indices = np.setdiff1d(np.arange(distances.shape[0]), candidate_query_indices)
-
+        print("\ncandidate query indices", candidate_query_indices)
         # filter out redundant samples
         candidate_distances = np.array(self.distance_fn(features[candidate_query_indices], features[candidate_query_indices]))
-        print("distances among sample batch", candidate_distances)
+        print("\ndistances among sample batch\n", candidate_distances)
         to_query = []
         not_to_query = []
         representative_sample_indices = []
@@ -375,21 +378,35 @@ class RewardProcessor:
                     to_query.append(idx)
                     skip_samples = [s for s in similar_samples if s not in not_to_query and not s == idx]
                     not_to_query += skip_samples
-                    representative_sample_indices += [idx] * len(skip_samples)
+                    representative_sample_indices += [candidate_query_indices[idx]] * len(skip_samples)
                 
                 # print("to_query", to_query)
                 # print("not to query", not_to_query)
                 # breakpoint()
 
             human_query_indices = candidate_query_indices[to_query]
-            ai_query_indices = np.concatenate([ai_query_indices, candidate_query_indices[not_to_query]])
             representative_sample_indices = np.concatenate([
-                np.array(most_similar_data_indices),
-                np.array(representative_sample_indices) + len(self.human_dataset["human_rewards"])
+                np.array(most_similar_data_indices, dtype=int)[ai_query_indices],
+                np.array(representative_sample_indices, dtype=int) + len(self.human_dataset["human_rewards"])
             ])
+            ai_query_indices = np.concatenate([ai_query_indices, candidate_query_indices[not_to_query]])
 
         else:
             human_query_indices = candidate_query_indices
             representative_sample_indices = np.array([])
 
         return human_query_indices, ai_query_indices, representative_sample_indices
+
+"""
+human_dataset_features = torch.stack([f for f in self.human_dataset["features"]])
+
+# should be 0s
+(self.distance_fn(features[human_query_indices], human_dataset_features) < self.distance_thresh).sum(axis=1)
+
+# ai_indices[indices where below == 0] are the redundant samples
+(self.distance_fn(features[ai_query_indices], human_dataset_features) < self.distance_thresh).sum(axis=1)
+
+# most_similar_indices should match representative_sample_indices
+self.similarity_fn(features[ai_query_indices], human_dataset_features)
+
+"""
