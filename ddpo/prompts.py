@@ -65,6 +65,10 @@ def cute_cats():
     return from_file("cute_cats.txt")
 
 
+def ugly_cats():
+    return from_file("ugly_cats.txt")
+
+
 def cute_animals(n_samples):
     return batch_prompts_from_file("cute_animals.txt", n_samples)
 
