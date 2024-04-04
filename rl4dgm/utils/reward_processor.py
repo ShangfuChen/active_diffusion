@@ -110,134 +110,12 @@ class RewardProcessor:
             print("Corrections", errors_for_postprocessing)
             print("Final rewards", final_rewards)
 
-            breakpoint()
-        
         print("Total human feedback:", self.total_n_human_feedback)
         print("Total AI feedback:", self.total_n_ai_feedback)
         print("Trusted AI feedback:", self.n_trusted_ai_feedback)
         print("Corrected AI feedback:", self.n_corrected_ai_feedback)
 
         return final_rewards
-
-    # def compute_consensus_rewards(self, images, prompts, ai_rewards, feedback_interface, features=None):        
-    #     """
-    #     Args:
-    #         images (Tensor) : images to compute consensus rewards on. First dimension should be batch size
-    #         features (Tensor) : image features to use for similarity computation. If not provided, images will be used instead
-    #         prompts (list(str)) : list of prompts corresponding to each of the input images
-    #         ai_rewards (list(float or int)) : AI rewards for the images in question
-    #         feedback_interface (rl4dgm.user_feedback_interface.FeedbackInterface) : user feedback interface to query human
-    #     """
-    #     if features is None:
-    #         features = images
-    #     if isinstance(ai_rewards, list):
-    #         ai_rewards = np.array(ai_rewards)
-
-    #     print("AI rewards", ai_rewards)
-
-    #     ##### Compute similarity and determine samples to query human for #####
-    #     if len(self.human_dataset["human_rewards"]) > 0:
-
-    #         # #######################################
-    #         # Compute similarity to samples in human dataset
-    #         human_dataset_features = torch.stack([f for f in self.human_dataset["features"]])
-    #         distances, most_similar_data_indices = self.similarity_fn(features, human_dataset_features)
-    #         print("minimum distances computed", distances)
-
-    #         # apply threshold and get indices of candidate samples to query
-    #         # candidate_query_indices = np.where(distances > self.distance_thresh)[0]
-    #         candidate_query_indices = np.arange(distances.shape[0])
-    #         no_query_indices = np.setdiff1d(np.arange(distances.shape[0]), candidate_query_indices) # indices for samples where similar sample exist in human dataset
-
-    #         # are there similar samples within the input batch?
-    #         distances_self = self.distance_fn(features[candidate_query_indices], features[candidate_query_indices])
-    #         self_indices = np.arange(distances.shape[0])
-    #         to_query = [] # ones to query among the candidates
-    #         not_to_query = [] # redundant ones among the candidates
-    #         not_to_query_similar_indices = [] # which one is queried as a representative of the not_to_query indices?
-    #         for i, d in enumerate(distances_self):
-    #             similar_indices = self_indices[np.where(d <= self.distance_thresh)[0]]
-    #             similar_indices = np.setdiff1d(similar_indices, np.array([i]))
-    #             if i not in to_query and not np.isin(similar_indices, to_query).any():
-    #                 # if none of the samples similar to this is scheduled to be queried, add to query
-    #                 to_query.append(i)
-    #                 # all other similar samples should not be queried
-    #                 skip_indices = [idx for idx in similar_indices if idx not in not_to_query]
-    #                 not_to_query += skip_indices
-    #                 # record most similar image idx (excluding itself)
-    #                 not_to_query_similar_indices += [i] * len(skip_indices)
-                    
-    #                 # if len(skip_indices) > 0:
-    #                 #     not_to_query_similar_indices += np.argsort(np.array(distances_self[skip_indices]))[:,1].tolist()
-    #                 # not_to_query_similar_indices += [candidate_query_indices[i]] * len(skip_indices)
-
-    #         query_indices = candidate_query_indices[to_query]
-    #         no_query_indices = np.concatenate([no_query_indices, candidate_query_indices[not_to_query]])
-    #         # not_to_query_similar_indices = candidate_query_indices[not_to_query_similar_indices]
-    #         # update most_similar_data_indices
-    #         breakpoint()
-    #         most_similar_data_indices = np.concatenate([
-    #             most_similar_data_indices, 
-    #             np.array(not_to_query_similar_indices) + len(self.human_dataset["human_rewards"])
-    #         ])
-
-
-    #         print("query indices", query_indices)
-    #         print("no query indices", no_query_indices)
-    #         # #######################################
-
-    #     else:
-    #         print("Human dataset is empty. All samples will be queried to human evaluator.")
-    #         query_indices = np.arange(images.shape[0])
-    #         no_query_indices = None
-        
-    #     self.total_n_human_feedback += query_indices.shape[0]
-
-    #     ##### Aggregate human dataset #####
-    #     human_rewards = feedback_interface.query_batch(prompts=prompts, image_batch=images, query_indices=query_indices)
-    #     self.add_to_human_dataset(
-    #         features=features[query_indices],
-    #         human_rewards=human_rewards,
-    #         ai_rewards=ai_rewards[query_indices],
-    #     )
-
-    #     ##### Compute final rewards #####
-    #     final_rewards = np.zeros(images.shape[0])
-    #     # use human rewards where we have them
-    #     final_rewards[query_indices] = np.array(human_rewards)
-
-    #     if no_query_indices is not None:
-
-    #         self.total_n_ai_feedback += no_query_indices.shape[0]
-            
-    #         # get error values from existing data
-    #         errors = np.array(self.human_dataset["reward_diff"])[most_similar_data_indices]
-    #         # get input image indices where AI feedback is trustable. Use AI feedback directly for these samples
-    #         trust_ai_indices = np.where(np.abs(errors) < self.reward_error_thresh)[0]
-    #         trust_ai_indices = np.setdiff1d(trust_ai_indices, query_indices) # remove indices queried by humans
-    #         final_rewards[trust_ai_indices] = ai_rewards[trust_ai_indices]
-
-    #         # get input image indices where AI feedback is not trustable
-    #         postprocess_ai_indices = np.where(np.abs(errors) >= self.reward_error_thresh)[0]
-    #         postprocess_ai_indices = np.setdiff1d(postprocess_ai_indices, query_indices) # remove indices queried by humans
-    #         postprocessed_ai_rewards = ai_rewards[postprocess_ai_indices] + errors[postprocess_ai_indices]
-    #         final_rewards[postprocess_ai_indices] = postprocessed_ai_rewards
-
-    #         self.n_trusted_ai_feedback += trust_ai_indices.shape[0]
-    #         self.n_corrected_ai_feedback += postprocess_ai_indices.shape[0]
-
-    #         print("Trusted AI for indices", trust_ai_indices)
-    #         print("Corrected AI for indices", postprocess_ai_indices)
-    #         print("AI rewards before correction", ai_rewards[postprocess_ai_indices])
-    #         print("Corrections", errors[postprocess_ai_indices])
-    #         print("most similar images", most_similar_data_indices)
-        
-    #     print("Total human feedback:", self.total_n_human_feedback)
-    #     print("Total AI feedback:", self.total_n_ai_feedback)
-    #     print("Trusted AI feedback:", self.n_trusted_ai_feedback)
-    #     print("Corrected AI feedback:", self.n_corrected_ai_feedback)
-
-    #     return final_rewards
 
 
     def add_to_human_dataset(self, features, human_rewards, ai_rewards):
@@ -393,7 +271,7 @@ class RewardProcessor:
 
         else:
             human_query_indices = candidate_query_indices
-            representative_sample_indices = np.array([])
+            representative_sample_indices = np.array(most_similar_data_indices, dtype=int)[ai_query_indices]
 
         return human_query_indices, ai_query_indices, representative_sample_indices
 
