@@ -9,8 +9,6 @@ import datetime
 from PIL import Image, ImageDraw, ImageFont
 
 
-
-
 def visualize_similar_samples(images, similarity_type="lpips", save_dir="similarity_visualizations"):
     """
     Args:
@@ -49,7 +47,7 @@ def visualize_similar_samples(images, similarity_type="lpips", save_dir="similar
         grid_height = grid_size[0] * grid_cell_size[1]
         grid_image = Image.new('RGB', (grid_width, grid_height), color='white')
         draw = ImageDraw.Draw(grid_image)
-        font = ImageFont.truetype("arial.ttf", 14)
+        font = ImageFont.truetype("arial.ttf", 12)
 
         for j, img_idx in enumerate(most_to_least_similar):
             # place image on grid
@@ -165,8 +163,26 @@ def _compute_lpips_distance(images):
     return distances
 
 
+def main(args):
+    images = [os.path.join(args.img_dir, img_file) for img_file in os.listdir(args.img_dir)]
+    os.makedirs(args.save_dir, exist_ok=True)
+    save_dir = os.path.join(args.save_dir, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    os.makedirs(save_dir)
+    visualize_similar_samples(images=images, save_dir=save_dir)
 
-img_dir = "/home/hayano/similarity_test_images"
+
+if __name__ == "__main__":
+    
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--img-dir", type=str, help="directory where source images are")
+    parser.add_argument("--save-dir", type=str, help="directory to save visualizations")
+    
+    args = parser.parse_args()
+
+
+# img_dir = "/home/hayano/similarity_test_images"
+img_dir = "/home/hayano/test"
+
 images = [os.path.join(img_dir, img_file) for img_file in os.listdir(img_dir)]
 save_dir = "/home/hayano/similarity_visualizations"
 os.makedirs(save_dir, exist_ok=True)
