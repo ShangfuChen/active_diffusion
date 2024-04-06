@@ -1,6 +1,9 @@
 
+
+import os
 import numpy as np
 import torch
+import pandas as pd
 
 from transformers import AutoProcessor, AutoModel
 
@@ -31,7 +34,7 @@ class RewardProcessor:
             "l2" : self._get_most_similar_l2,
         }
 
-        assert distance_type in SIMILARITY_FUNCTIONS.keys(), f"distance_type must be one of {SIMILARITY_MEASURES.keys()}. Got {distance_type}."        
+        assert distance_type in SIMILARITY_FUNCTIONS.keys(), f"distance_type must be one of {SIMILARITY_FUNCTIONS.keys()}. Got {distance_type}."        
         self.distance_fn = DISTANCE_FUNCTIONS[distance_type]
         self.similarity_fn = SIMILARITY_FUNCTIONS[distance_type]
         # thresholds
@@ -47,11 +50,38 @@ class RewardProcessor:
             "reward_diff" : [], # Error of AI reward wrt human reward (R_human - R_AI)
         }
 
+        # self.human_dataset = {
+        #     pd.DataFrame(
+        #         columns=[
+        #             "features", 
+        #             "noise_latents",
+        #             "human_rewards",
+        #             "ai_rewards",
+        #             "reward_diff",
+        #         ],
+        #     )
+        # }
+
         self.total_n_human_feedback = 0
         self.total_n_ai_feedback = 0
         self.n_trusted_ai_feedback = 0
         self.n_corrected_ai_feedback = 0
 
+        # TODO define dtypes for each column to save some memory
+        self.feedback_log_df = pd.DataFrame(
+            columns=[
+                "epoch",
+                "human_query_indices",
+                "ai_query_indices",
+                "human_rewards",
+                "ai_rewards",
+                "final_rewards",
+                "representative_sample_indices",
+                "n_human_feedback",
+                "n_ai_feedback_trusted",
+                "n_ai_feedback_corrected",
+            ],
+        )
 
     def compute_consensus_rewards(self, images, prompts, ai_rewards, feedback_interface, all_latents=None):        
         """
@@ -126,12 +156,34 @@ class RewardProcessor:
         print("Trusted AI feedback:", self.n_trusted_ai_feedback)
         print("Corrected AI feedback:", self.n_corrected_ai_feedback)
 
+        self.feedback_log_df.loc[len(self.feedback_log_df.index)] = [
+            len(self.feedback_log_df.index),
+            human_query_indices,
+            ai_query_indices,
+            human_rewards,
+            ai_rewards,
+            final_rewards,
+            representative_sample_indices,
+            self.total_n_human_feedback,
+            self.n_trusted_ai_feedback,
+            self.n_corrected_ai_feedback,
+        ]
+
         # get idx with the top-{batch_size} human rewards
         high_reward_idx = np.argpartition(self.human_dataset["human_rewards"], -batch_size)[-batch_size:]
         high_reward_latents = torch.stack(
             [self.human_dataset["noise_latents"][i] for i in high_reward_idx],
             dim = 0)
         return final_rewards, high_reward_latents
+
+    def save_feedback_logfile_to_pickle(self, save_path):
+        print(f"saving feedback logs to {save_path}")
+        self.feedback_log_df.to_pickle(save_path)
+
+    
+    # def save_human_dataset_to_pickle(self, save_path):
+    #     print(f"saving human dataset to {save_path}")
+    #     self.human_dataset.to_pickle(save_path)
 
 
     def add_to_human_dataset(self, features, noise_latents, human_rewards, ai_rewards):
@@ -156,7 +208,6 @@ class RewardProcessor:
         self.human_dataset["ai_rewards"] += ai_rewards
         error = np.array(human_rewards) - np.array(ai_rewards)
         self.human_dataset["reward_diff"] += error.tolist()
-
 
 
     ##################################################
