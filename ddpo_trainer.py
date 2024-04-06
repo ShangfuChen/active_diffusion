@@ -241,6 +241,7 @@ class DDPOTrainer:
         self.reward_fn = getattr(ddpo.rewards, config.reward_fn)()
 
         # generate negative prompt embeddings
+        # NOTE: can define negative prompt here
         neg_prompt_embed = self.pipeline.text_encoder(
             self.pipeline.tokenizer(
                 [""],

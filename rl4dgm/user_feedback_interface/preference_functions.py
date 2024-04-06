@@ -19,7 +19,7 @@ Arg:
     images (list(PILImage)) : a pair of images with the same prompt
 """
 def ColorPickOne(**kwargs):
-    im0, im1 = kwargs['images']
+    im0, im1 = kwargs["images"]
     im0, im1 = np.array(im0), np.array(im1)
     if im0[:, :, 0].sum() > im1[:, :, 0].sum():
         label0 = 1
@@ -31,19 +31,20 @@ def ColorPickOne(**kwargs):
 
 
 def ColorScoreOne(**kwargs):
-    im = np.array(kwargs['images'][0])
+    im = np.array(kwargs["images"][0])
     score = im[:, :, 0].mean() - im[:, :, 1:].mean()
     return 1+(score / 255 * 9)
 
 
+"""
+Use finetuned pickscore to calculate rewards
+"""
 def PickScore(**kwargs):
-    model = kwargs['model']
-    im = np.array(kwargs['images'][0])
-    score = im[:, :, 0].mean() - im[:, :, 1:].mean()
-    return 1+(score / 255 * 9)
-
-
-def calc_probs(processor, model, images, prompt, device):
+    processor = kwargs["processor"]
+    model = kwargs["model"]
+    images = kwargs["images"]
+    prompt = kwargs["prompt"]
+    device = kwargs["device"]
     # preprocess
     image_inputs = processor(
         images=images,
@@ -60,8 +61,6 @@ def calc_probs(processor, model, images, prompt, device):
         max_length=77,
         return_tensors="pt",
     ).to(device)
-
-
     with torch.no_grad():
         # embed
         try:
@@ -82,22 +81,6 @@ def calc_probs(processor, model, images, prompt, device):
         
             # score
             scores = model.module.logit_scale.exp() * (text_embs @ image_embs.T)[0]
-        # get probabilities if you have multiple images to choose from
-        probs = torch.softmax(scores, dim=-1)
-    
-    return probs.cpu().tolist(), scores.cpu().tolist()
-
-
-"""
-Use finetuned pickscore to calculate rewards
-"""
-def pickscore():
-    def _fn(processer, model, images, prompts, device):
-        if isinstance(images, torch.Tensor):
-            imgs = []
-            toPIL = torchvision.transforms.ToPILImage()
-            for im in images:
-                imgs.append(toPIL(im))    
-        _, score = calc_probs(processer, model, imgs, prompts, device)
-        return score, {}
-    return _fn
+    scores = scores.squeeze().cpu()
+    scores = (scores - 19.2)/5*9 + 1
+    return scores.squeeze().cpu()

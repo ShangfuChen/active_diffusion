@@ -13,6 +13,7 @@ import pandas as pd
 from datetime import datetime
 import torch
 from torchvision.transforms.functional import to_pil_image
+from transformers import AutoProcessor, AutoModel
 
 NUMBERING_FONT_SIZE = 64
 NUMBERING_FONT = ImageFont.truetype("FreeMono.ttf", NUMBERING_FONT_SIZE)
@@ -63,6 +64,7 @@ class FeedbackInterface:
         assert feedback_type in FEEDBACK_TYPE_TO_ID.keys(), f"feedback_type should be one of {FEEDBACK_TYPE_TO_ID.keys()}. Got {feedback_type}."
         self.feedback_type = FEEDBACK_TYPE_TO_ID[feedback_type]
         self.feedback_args = self._initialize_feedback_settings(self.feedback_type, **kwargs)        
+        self.preference_function = None
 
         # intialize dataframe
         self.reset_dataset()
@@ -119,7 +121,15 @@ class FeedbackInterface:
                 img_save_path="query_image.png",
             )
             # Get feedback
-            feedback = self._get_feedback(prompt=prompt, images=images)
+            if self.preference_function.__name__ == 'PickScore':
+                feedback = self._get_feedback(processor=self.processor,
+                                              model=self.reward_model,
+                                              prompt=prompt,
+                                              images=images,
+                                              device=image_batch.device,
+                                              )
+            else:
+                feedback = self._get_feedback(prompt=prompt, images=images)
             feedbacks.append(feedback)
 
             # Append query + feedback to self.df
@@ -424,6 +434,9 @@ class AIFeedbackInterface(FeedbackInterface):
             query_image_size=query_image_size,
         )
         self.preference_function = preference_function
+        if preference_function.__name__ == "PickScore":
+            self.processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+            self.reward_model = AutoModel.from_pretrained(pretrained_model_name_or_path="yuvalkirstain/PickScore_v1").to("cuda").eval()
 
     def _get_feedback(self, **kwargs):
         """
@@ -434,6 +447,7 @@ class AIFeedbackInterface(FeedbackInterface):
             img_paths (list(str)) : list of paths to images to query
         """
         return self.preference_function(**kwargs)
+    
 
 class HumanFeedbackInterface(FeedbackInterface):
     """
