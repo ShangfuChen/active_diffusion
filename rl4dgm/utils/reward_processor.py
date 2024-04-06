@@ -42,25 +42,24 @@ class RewardProcessor:
         self.reward_error_thresh = reward_error_thresh
         self.fixed_query_ratio = fixed_query_ratio
 
-        self.human_dataset = {
-            "features" : [], # image features
-            "noise_latents" : [], # image features
-            "human_rewards" : [], # rewards from humans
-            "ai_rewards" : [], # rewards from AI
-            "reward_diff" : [], # Error of AI reward wrt human reward (R_human - R_AI)
-        }
-
         # self.human_dataset = {
-        #     pd.DataFrame(
-        #         columns=[
-        #             "features", 
-        #             "noise_latents",
-        #             "human_rewards",
-        #             "ai_rewards",
-        #             "reward_diff",
-        #         ],
-        #     )
+        #     "features" : [], # image features
+        #     "noise_latents" : [], # image features
+        #     "human_rewards" : [], # rewards from humans
+        #     "ai_rewards" : [], # rewards from AI
+        #     "reward_diff" : [], # Error of AI reward wrt human reward (R_human - R_AI)
         # }
+
+        self.human_dataset = pd.DataFrame(
+            columns=[
+                "features", 
+                "noise_latents",
+                "human_rewards",
+                "ai_rewards",
+                "reward_diff",
+            ],
+        )
+        
 
         self.total_n_human_feedback = 0
         self.total_n_ai_feedback = 0
@@ -92,8 +91,8 @@ class RewardProcessor:
             ai_rewards (list(float or int)) : AI rewards for the images in question
             feedback_interface (rl4dgm.user_feedback_interface.FeedbackInterface) : user feedback interface to query human
         """
-        features = all_latents[:, -1, :, :, :]       
-        noise_latents = all_latents[:, 0, :, :, :]
+        features = all_latents[:, -1, :, :, :].clone().detach().cpu()       
+        noise_latents = all_latents[:, 0, :, :, :].clone().detach().cpu()
         batch_size = all_latents.shape[0]
 
         if features is None:
@@ -181,10 +180,33 @@ class RewardProcessor:
         self.feedback_log_df.to_pickle(save_path)
 
     
-    # def save_human_dataset_to_pickle(self, save_path):
-    #     print(f"saving human dataset to {save_path}")
-    #     self.human_dataset.to_pickle(save_path)
+    def save_human_dataset_to_pickle(self, save_path):
+        print(f"saving human dataset to {save_path}")
+        self.human_dataset.to_pickle(save_path)
 
+    # for use when human_dataset is dict
+    # def add_to_human_dataset(self, features, noise_latents, human_rewards, ai_rewards):
+    #     """
+    #     Add new datapoints to human dataset. 
+        
+    #     Args:
+    #         features (Tensor) : image features to add to the dataset. First dimension should be batch size
+    #         human_rewards (list(float or int) or array(float or int)) : human rewards for the input images
+    #         ai_rewards (list(float or int) or array(float or int)) : AI rewards for the input images
+    #     """
+
+    #     # Cast inputs to list
+    #     if type(human_rewards) == np.ndarray:
+    #         human_rewards = human_rewards.tolist()
+    #     if type(ai_rewards) == np.ndarray:
+    #         ai_rewards = ai_rewards.tolist()
+
+    #     self.human_dataset["features"] += [feature for feature in features]
+    #     self.human_dataset["noise_latents"] += [latent for latent in noise_latents]
+    #     self.human_dataset["human_rewards"] += human_rewards
+    #     self.human_dataset["ai_rewards"] += ai_rewards
+    #     error = np.array(human_rewards) - np.array(ai_rewards)
+    #     self.human_dataset["reward_diff"] += error.tolist()
 
     def add_to_human_dataset(self, features, noise_latents, human_rewards, ai_rewards):
         """
@@ -195,19 +217,15 @@ class RewardProcessor:
             human_rewards (list(float or int) or array(float or int)) : human rewards for the input images
             ai_rewards (list(float or int) or array(float or int)) : AI rewards for the input images
         """
-
-        # Cast inputs to list
-        if type(human_rewards) == np.ndarray:
-            human_rewards = human_rewards.tolist()
-        if type(ai_rewards) == np.ndarray:
-            ai_rewards = ai_rewards.tolist()
-
-        self.human_dataset["features"] += [feature for feature in features]
-        self.human_dataset["noise_latents"] += [latent for latent in noise_latents]
-        self.human_dataset["human_rewards"] += human_rewards
-        self.human_dataset["ai_rewards"] += ai_rewards
-        error = np.array(human_rewards) - np.array(ai_rewards)
-        self.human_dataset["reward_diff"] += error.tolist()
+        errors = np.array(human_rewards) - np.array(ai_rewards)
+        for i in range(features.shape[0]):
+            self.human_dataset.loc[len(self.human_dataset.index)] = [
+                features[i].cpu(),
+                noise_latents[i].cpu(),
+                human_rewards[i].item(),
+                ai_rewards[i],
+                errors[i],
+            ]
 
 
     ##################################################
