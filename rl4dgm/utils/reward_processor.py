@@ -11,11 +11,14 @@ class RewardProcessor:
     def __init__(
         self,
         distance_thresh=10.0,
+        fixed_query_ratio=None,
         distance_type="l2",
         reward_error_thresh=2.0,
     ):
         """
         distance_thresh (float) : samples with similarity value above this is considered similar
+        fixed_query_ratio (None or float) : ratio of samples to query human (redundant sample filtering will NOT be applied on top of this)
+            if specified, distance_thresh is ignored
         distance_type (str) : type of distance metric to use
         reward_error_thresh (float) : reward error threshold to use when determining whether AI feedback is trustable for a given sample
             if R_H - R_AI > reward_error_thresh, AI feedback for this sample will be postprocessed
@@ -34,6 +37,7 @@ class RewardProcessor:
         # thresholds
         self.distance_thresh = distance_thresh
         self.reward_error_thresh = reward_error_thresh
+        self.fixed_query_ratio = fixed_query_ratio
 
         self.human_dataset = {
             "features" : [], # image features
@@ -81,9 +85,10 @@ class RewardProcessor:
 
         ##### Aggregate human dataset #####
         human_rewards = feedback_interface.query_batch(prompts=prompts, image_batch=images, query_indices=human_query_indices)
+
         self.add_to_human_dataset(
-            features=features[human_query_indices],
-            noise_latents=noise_latents[human_query_indices],
+            features=features[human_query_indices.copy()],
+            noise_latents=noise_latents[human_query_indices.copy()],
             human_rewards=human_rewards,
             ai_rewards=ai_rewards[human_query_indices],
         )
@@ -245,6 +250,18 @@ class RewardProcessor:
         distances, most_similar_data_indices = self.similarity_fn(features, human_dataset_features)
         print("\nminimum distances computed", distances)
 
+        #################### Case for querying fixed ratio of samples (fixed_query_ratio is unspecified) ####################
+        if self.fixed_query_ratio is not None:
+            # order the samples by distance to human dataset and choose (fixed_query_ratio * n_samples) samples with highest distances to query
+            max_to_min_dist_indices = np.argsort(np.array(distances))[::-1]
+            n_human_queries = int(self.fixed_query_ratio * features.shape[0])
+            # breakpoint()
+            human_query_indices = max_to_min_dist_indices[:n_human_queries]
+            ai_query_indices = np.setdiff1d(np.arange(distances.shape[0]), human_query_indices)
+            representative_sample_indices = np.array(most_similar_data_indices, dtype=int)[ai_query_indices]
+            return human_query_indices, ai_query_indices, representative_sample_indices
+        
+        #################### Case for using absolute similarity threshold (fixed_query_ratio is unspecified) ####################
         # apply threshold and get indices of candidate samples to query
         # candidate_query_indices = np.array([0, 1, 2, 3, 4, 7])
         candidate_query_indices = np.where(distances > self.distance_thresh)[0] # indices for samples where similar sample exist in human dataset
@@ -283,7 +300,7 @@ class RewardProcessor:
 
         else:
             human_query_indices = candidate_query_indices
-            representative_sample_indices = np.array([])
+            representative_sample_indices = np.array(most_similar_data_indices, dtype=int)[ai_query_indices]
 
         return human_query_indices, ai_query_indices, representative_sample_indices
 
