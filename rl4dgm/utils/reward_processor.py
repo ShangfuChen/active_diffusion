@@ -320,7 +320,7 @@ class RewardProcessor:
         print("\ncandidate query indices", candidate_query_indices)
         # filter out redundant samples
         candidate_distances = np.array(self.distance_fn(features[candidate_query_indices], features[candidate_query_indices]))
-        print("\ndistances among sample batch\n", candidate_distances)
+        # print("\ndistances among sample batch\n", candidate_distances)
         to_query = []
         not_to_query = []
         representative_sample_indices = []
