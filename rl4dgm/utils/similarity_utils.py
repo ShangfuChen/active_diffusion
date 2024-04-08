@@ -14,17 +14,23 @@ from diffusers import StableDiffusionPipeline, DDIMScheduler, UNet2DConditionMod
 
 def visualize_similar_samples_sd_intermediate_features(images, save_dir="similarity_visualizations"):
 
-    breakpoint()
+    # if inputs are image paths, read them
+    if isinstance(images, list):
+        images = torch.stack([torchvision.io.read_image(image_path) for image_path in images])
+
     # get dictionary of intermediate_features    
     intermediate_features = _compute_sd_intermediate_latents(images=images)
 
     # compute distances and save visualizations for each intermediate features
     for key in intermediate_features:
         name = key.replace('.', '_')
-        save_file = os.path.join(save_dir, name)
+        save_folder = os.path.join(save_dir, name)
+        os.makedirs(save_folder)
         features = intermediate_features[key]
         dists = _compute_l2_distance(features, features)
-        save_visualizations(images=images, distances=dists, save_dir=save_file)
+        save_visualizations(images=images, distances=dists, save_dir=save_folder)
+        print(f"saved {save_folder}")
+        breakpoint()
 
 def visualize_similar_samples(images, similarity_type="sd_latent_l2", save_dir="similarity_visualizations"):
     """
@@ -292,7 +298,7 @@ def _compute_sd_intermediate_latents(images):
     for name, layer in encoder.named_modules():
         layer.register_forward_hook(get_activation(name))
 
-    latents = encoder(images[:2].float().to("cuda")) 
+    latents = encoder(images.float().to("cuda")) 
     return intermediate_features
 
 
@@ -308,19 +314,20 @@ def main(args):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--img-dir", type=str, help="directory where source images are")
-    parser.add_argument("--save-dir", type=str, help="directory to save visualizations")
+    parser.add_argument("--img-dir", type=str, help="directory where source images are", default="/home/hayano/similarity_test_images")
+    parser.add_argument("--save-dir", type=str, help="directory to save visualizations", default="/home/hayano/similarity_visualizations")
     
     args = parser.parse_args()
+    main(args)
 
 
-# img_dir = "/home/hayano/similarity_test_images"
-img_dir = "/home/hayano/test"
+# # img_dir = "/home/hayano/similarity_test_images"
+# img_dir = "/home/hayano/test"
 
-images = [os.path.join(img_dir, img_file) for img_file in os.listdir(img_dir)]
-save_dir = "/home/hayano/similarity_visualizations"
-os.makedirs(save_dir, exist_ok=True)
-save_dir = os.path.join(save_dir, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
-os.makedirs(save_dir)
+# images = [os.path.join(img_dir, img_file) for img_file in os.listdir(img_dir)]
+# save_dir = "/home/hayano/similarity_visualizations"
+# os.makedirs(save_dir, exist_ok=True)
+# save_dir = os.path.join(save_dir, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+# os.makedirs(save_dir)
 
-visualize_similar_samples(images=images, save_dir=save_dir)
+# visualize_similar_samples(images=images, save_dir=save_dir)
