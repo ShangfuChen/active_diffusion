@@ -18,11 +18,13 @@ def visualize_similar_samples_sd_intermediate_features(images, save_dir="similar
     if isinstance(images, list):
         images = torch.stack([torchvision.io.read_image(image_path) for image_path in images])
 
-    # get dictionary of intermediate_features    
+    # get dictionary of intermediate_features   
     intermediate_features = _compute_sd_intermediate_latents(images=images)
 
     # compute distances and save visualizations for each intermediate features
     for key in intermediate_features:
+        if key == "":
+            continue
         name = key.replace('.', '_')
         save_folder = os.path.join(save_dir, name)
         os.makedirs(save_folder)
@@ -30,7 +32,6 @@ def visualize_similar_samples_sd_intermediate_features(images, save_dir="similar
         dists = _compute_l2_distance(features, features)
         save_visualizations(images=images, distances=dists, save_dir=save_folder)
         print(f"saved {save_folder}")
-        breakpoint()
 
 def visualize_similar_samples(images, similarity_type="sd_latent_l2", save_dir="similarity_visualizations"):
     """
@@ -314,7 +315,7 @@ def main(args):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--img-dir", type=str, help="directory where source images are", default="/home/hayano/similarity_test_images")
+    parser.add_argument("--img-dir", type=str, help="directory where source images are", default="/home/hayano/similarity_test_images_20")
     parser.add_argument("--save-dir", type=str, help="directory to save visualizations", default="/home/hayano/similarity_visualizations")
     
     args = parser.parse_args()
