@@ -51,7 +51,7 @@ def visualize_similar_samples(images, similarity_type="sd_latent_l2", save_dir="
     # if inputs are image paths, read them
     if isinstance(images, list):
         images = torch.stack([torchvision.io.read_image(image_path) for image_path in images])
-    
+    breakpoint()
     distances = similarity_fn(images)
 
     save_visualizations(images=images, distances=distances, save_dir=save_dir)
@@ -113,58 +113,58 @@ def visualize_similar_samples(images, similarity_type="sd_latent_l2", save_dir="
 #         grid_image.save(os.path.join(save_dir, f"{i}_similarities.jpg"))
 
 # def visualize_similar_samples(images, save_dir="similarity_visualizations"):
-#     """
-#     Args:
-#         images (tensor or list(str)) : images to visualize similarity among
-#             Given as tensor (n_images, D, W, H) or as a list of paths to saved images
-#         save_dir (str) : path to directory to save visualizations
-#     """
-#     import lpips
-#     loss_fn_alex = lpips.LPIPS(net='alex') # best forward scores
-#     loss_fn_vgg = lpips.LPIPS(net='vgg') # closer to "traditional" perceptual loss, when used for optimization
+    """
+    Args:
+        images (tensor or list(str)) : images to visualize similarity among
+            Given as tensor (n_images, D, W, H) or as a list of paths to saved images
+        save_dir (str) : path to directory to save visualizations
+    """
+    import lpips
+    loss_fn_alex = lpips.LPIPS(net='alex') # best forward scores
+    loss_fn_vgg = lpips.LPIPS(net='vgg') # closer to "traditional" perceptual loss, when used for optimization
 
-#     # if inputs are image paths, read them
-#     if isinstance(images, list):
-#         images = torch.stack([torchvision.io.read_image(image_path) for image_path in images])
+    # if inputs are image paths, read them
+    if isinstance(images, list):
+        images = torch.stack([torchvision.io.read_image(image_path) for image_path in images])
 
-#     n_images = images.shape[0]
-#     # image_width = images[0].shape[1]
-#     # image_height = images[0].shape[2]
-#     n_rows = int(np.ceil(np.sqrt(n_images)))
-#     grid_size = (n_rows, n_rows)
-#     output_img_size = (1024, 1024)
-#     grid_cell_size = (int(output_img_size[0] / n_rows), int(output_img_size[0] / n_rows))
-#     image_width = int(0.9*grid_cell_size[0])
-#     image_height = int(0.9*grid_cell_size[1])
+    n_images = images.shape[0]
+    # image_width = images[0].shape[1]
+    # image_height = images[0].shape[2]
+    n_rows = int(np.ceil(np.sqrt(n_images)))
+    grid_size = (n_rows, n_rows)
+    output_img_size = (1024, 1024)
+    grid_cell_size = (int(output_img_size[0] / n_rows), int(output_img_size[0] / n_rows))
+    image_width = int(0.9*grid_cell_size[0])
+    image_height = int(0.9*grid_cell_size[1])
 
-#     for i, im1 in enumerate(images):
-#         # get distances to each image
-#         dists = []
-#         for im2 in images:
-#             dists.append(loss_fn_alex(im1, im2))
-#         dists = torch.tensor(dists)
-#         most_to_least_similar = torch.argsort(dists)
+    for i, im1 in enumerate(images):
+        # get distances to each image
+        dists = []
+        for im2 in images:
+            dists.append(loss_fn_alex(im1, im2))
+        dists = torch.tensor(dists)
+        most_to_least_similar = torch.argsort(dists)
 
-#         # create canvas
-#         grid_width = grid_size[1] * grid_cell_size[0]
-#         grid_height = grid_size[0] * grid_cell_size[1]
-#         grid_image = Image.new('RGB', (grid_width, grid_height), color='white')
-#         draw = ImageDraw.Draw(grid_image)
-#         font = ImageFont.truetype("arial.ttf", 14)
+        # create canvas
+        grid_width = grid_size[1] * grid_cell_size[0]
+        grid_height = grid_size[0] * grid_cell_size[1]
+        grid_image = Image.new('RGB', (grid_width, grid_height), color='white')
+        draw = ImageDraw.Draw(grid_image)
+        font = ImageFont.truetype("arial.ttf", 14)
 
-#         for j, img_idx in enumerate(most_to_least_similar):
-#             # place image on grid
-#             img = torchvision.transforms.functional.to_pil_image(images[img_idx])
-#             x_offset = (j % grid_size[1]) * grid_cell_size[0]
-#             y_offset = (j // grid_size[0]) * grid_cell_size[1]
-#             grid_image.paste(img.resize((image_width, image_height)), (x_offset, y_offset))
+        for j, img_idx in enumerate(most_to_least_similar):
+            # place image on grid
+            img = torchvision.transforms.functional.to_pil_image(images[img_idx])
+            x_offset = (j % grid_size[1]) * grid_cell_size[0]
+            y_offset = (j // grid_size[0]) * grid_cell_size[1]
+            grid_image.paste(img.resize((image_width, image_height)), (x_offset, y_offset))
 
-#             # add score text
-#             text = f"{dists[img_idx]}"
-#             # text_width, text_height = draw.textsize(text, font=font)
-#             text_position = (x_offset + 5, y_offset + image_height + 5)
-#             draw.text(text_position, text, fill='black', font=font)
-#         grid_image.save(os.path.join(save_dir, f"{i}_similarities.jpg"))
+            # add score text
+            text = f"{dists[img_idx]}"
+            # text_width, text_height = draw.textsize(text, font=font)
+            text_position = (x_offset + 5, y_offset + image_height + 5)
+            draw.text(text_position, text, fill='black', font=font)
+        grid_image.save(os.path.join(save_dir, f"{i}_similarities.jpg"))
 
 def save_visualizations(images, distances, save_dir):
     
@@ -315,8 +315,8 @@ def main(args):
 if __name__ == "__main__":
     
     parser = argparse.ArgumentParser()
-    parser.add_argument("--img-dir", type=str, help="directory where source images are", default="/home/hayano/similarity_test_images_20")
-    parser.add_argument("--save-dir", type=str, help="directory to save visualizations", default="/home/hayano/similarity_visualizations")
+    parser.add_argument("--img-dir", type=str, help="directory where source images are", default="/home/ayanoh/similarity_test_images_16")
+    parser.add_argument("--save-dir", type=str, help="directory to save visualizations", default="/home/ayanoh/similarity_visualizations")
     
     args = parser.parse_args()
     main(args)

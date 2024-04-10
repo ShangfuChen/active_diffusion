@@ -91,12 +91,17 @@ class RewardProcessor:
             ai_rewards (list(float or int)) : AI rewards for the images in question
             feedback_interface (rl4dgm.user_feedback_interface.FeedbackInterface) : user feedback interface to query human
         """
-        features = all_latents[:, -1, :, :, :].clone().detach().cpu()       
-        noise_latents = all_latents[:, 0, :, :, :].clone().detach().cpu()
-        batch_size = all_latents.shape[0]
+        
+        if all_latents is None:
+            # if there are no input latents, use raw images
+            features = images 
+        else:
+            # otherwise, grab relevant components of latents
+            features = all_latents[:, -1, :, :, :].clone().detach().cpu()       
+            noise_latents = all_latents[:, 0, :, :, :].clone().detach().cpu()
+            batch_size = all_latents.shape[0]
 
-        if features is None:
-            features = images
+        # cast ai_rewards to array
         if isinstance(ai_rewards, list):
             ai_rewards = np.array(ai_rewards)
 
