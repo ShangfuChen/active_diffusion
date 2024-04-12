@@ -84,9 +84,11 @@ Use pixel values from a channel as a dummy reward
 def color_score():
     def _fn(images, prompts):
         if isinstance(images, torch.Tensor):
-            images = (images * 255).round().clamp(0, 255).to(torch.uint8).cpu().numpy()
-            images = images[:, 0, :, :]
-            score = np.mean(images, axis=(1, 2))
+            images = images.cpu().numpy()
+            red = np.mean(images[:, 0, :, :], axis=(1, 2))
+            other = np.mean(images[:, 1:, :, :], axis=(1, 2, 3))
+            score = 1 + (red - other)*9
+            score += np.random.randn(score.shape[0])*1
         return score, {}
     return _fn
 
