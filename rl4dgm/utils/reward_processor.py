@@ -1,6 +1,9 @@
 
+
+import os
 import numpy as np
 import torch
+import pandas as pd
 
 from transformers import AutoProcessor, AutoModel
 
@@ -31,7 +34,7 @@ class RewardProcessor:
             "l2" : self._get_most_similar_l2,
         }
 
-        assert distance_type in SIMILARITY_FUNCTIONS.keys(), f"distance_type must be one of {SIMILARITY_MEASURES.keys()}. Got {distance_type}."        
+        assert distance_type in SIMILARITY_FUNCTIONS.keys(), f"distance_type must be one of {SIMILARITY_FUNCTIONS.keys()}. Got {distance_type}."        
         self.distance_fn = DISTANCE_FUNCTIONS[distance_type]
         self.similarity_fn = SIMILARITY_FUNCTIONS[distance_type]
         # thresholds
@@ -39,19 +42,45 @@ class RewardProcessor:
         self.reward_error_thresh = reward_error_thresh
         self.fixed_query_ratio = fixed_query_ratio
 
-        self.human_dataset = {
-            "features" : [], # image features
-            "noise_latents" : [], # image features
-            "human_rewards" : [], # rewards from humans
-            "ai_rewards" : [], # rewards from AI
-            "reward_diff" : [], # Error of AI reward wrt human reward (R_human - R_AI)
-        }
+        # self.human_dataset = {
+        #     "features" : [], # image features
+        #     "noise_latents" : [], # image features
+        #     "human_rewards" : [], # rewards from humans
+        #     "ai_rewards" : [], # rewards from AI
+        #     "reward_diff" : [], # Error of AI reward wrt human reward (R_human - R_AI)
+        # }
+
+        self.human_dataset = pd.DataFrame(
+            columns=[
+                "features", 
+                "noise_latents",
+                "human_rewards",
+                "ai_rewards",
+                "reward_diff",
+            ],
+        )
+        
 
         self.total_n_human_feedback = 0
         self.total_n_ai_feedback = 0
         self.n_trusted_ai_feedback = 0
         self.n_corrected_ai_feedback = 0
 
+        # TODO define dtypes for each column to save some memory
+        self.feedback_log_df = pd.DataFrame(
+            columns=[
+                "epoch",
+                "human_query_indices",
+                "ai_query_indices",
+                "human_rewards",
+                "ai_rewards",
+                "final_rewards",
+                "representative_sample_indices",
+                "n_human_feedback",
+                "n_ai_feedback_trusted",
+                "n_ai_feedback_corrected",
+            ],
+        )
 
     def compute_consensus_rewards(self, images, prompts, ai_rewards, feedback_interface, all_latents=None):        
         """
@@ -62,12 +91,17 @@ class RewardProcessor:
             ai_rewards (list(float or int)) : AI rewards for the images in question
             feedback_interface (rl4dgm.user_feedback_interface.FeedbackInterface) : user feedback interface to query human
         """
-        features = all_latents[:, -1, :, :, :]       
-        noise_latents = all_latents[:, 0, :, :, :]
-        batch_size = all_latents.shape[0]
+        
+        if all_latents is None:
+            # if there are no input latents, use raw images
+            features = images 
+        else:
+            # otherwise, grab relevant components of latents
+            features = all_latents[:, -1, :, :, :].clone().detach().cpu()       
+            noise_latents = all_latents[:, 0, :, :, :].clone().detach().cpu()
+            batch_size = all_latents.shape[0]
 
-        if features is None:
-            features = images
+        # cast ai_rewards to array
         if isinstance(ai_rewards, list):
             ai_rewards = np.array(ai_rewards)
 
@@ -126,6 +160,19 @@ class RewardProcessor:
         print("Trusted AI feedback:", self.n_trusted_ai_feedback)
         print("Corrected AI feedback:", self.n_corrected_ai_feedback)
 
+        self.feedback_log_df.loc[len(self.feedback_log_df.index)] = [
+            len(self.feedback_log_df.index),
+            human_query_indices,
+            ai_query_indices,
+            human_rewards,
+            ai_rewards,
+            final_rewards,
+            representative_sample_indices,
+            self.total_n_human_feedback,
+            self.n_trusted_ai_feedback,
+            self.n_corrected_ai_feedback,
+        ]
+
         # get idx with the top-{batch_size} human rewards
         high_reward_idx = np.argpartition(self.human_dataset["human_rewards"], -batch_size)[-batch_size:]
         high_reward_latents = torch.stack(
@@ -133,6 +180,38 @@ class RewardProcessor:
             dim = 0)
         return final_rewards, high_reward_latents
 
+    def save_feedback_logfile_to_pickle(self, save_path):
+        print(f"saving feedback logs to {save_path}")
+        self.feedback_log_df.to_pickle(save_path)
+
+    
+    def save_human_dataset_to_pickle(self, save_path):
+        print(f"saving human dataset to {save_path}")
+        self.human_dataset.to_pickle(save_path)
+
+    # for use when human_dataset is dict
+    # def add_to_human_dataset(self, features, noise_latents, human_rewards, ai_rewards):
+    #     """
+    #     Add new datapoints to human dataset. 
+        
+    #     Args:
+    #         features (Tensor) : image features to add to the dataset. First dimension should be batch size
+    #         human_rewards (list(float or int) or array(float or int)) : human rewards for the input images
+    #         ai_rewards (list(float or int) or array(float or int)) : AI rewards for the input images
+    #     """
+
+    #     # Cast inputs to list
+    #     if type(human_rewards) == np.ndarray:
+    #         human_rewards = human_rewards.tolist()
+    #     if type(ai_rewards) == np.ndarray:
+    #         ai_rewards = ai_rewards.tolist()
+
+    #     self.human_dataset["features"] += [feature for feature in features]
+    #     self.human_dataset["noise_latents"] += [latent for latent in noise_latents]
+    #     self.human_dataset["human_rewards"] += human_rewards
+    #     self.human_dataset["ai_rewards"] += ai_rewards
+    #     error = np.array(human_rewards) - np.array(ai_rewards)
+    #     self.human_dataset["reward_diff"] += error.tolist()
 
     def add_to_human_dataset(self, features, noise_latents, human_rewards, ai_rewards):
         """
@@ -143,20 +222,15 @@ class RewardProcessor:
             human_rewards (list(float or int) or array(float or int)) : human rewards for the input images
             ai_rewards (list(float or int) or array(float or int)) : AI rewards for the input images
         """
-
-        # Cast inputs to list
-        if type(human_rewards) == np.ndarray:
-            human_rewards = human_rewards.tolist()
-        if type(ai_rewards) == np.ndarray:
-            ai_rewards = ai_rewards.tolist()
-
-        self.human_dataset["features"] += [feature for feature in features]
-        self.human_dataset["noise_latents"] += [latent for latent in noise_latents]
-        self.human_dataset["human_rewards"] += human_rewards
-        self.human_dataset["ai_rewards"] += ai_rewards
-        error = np.array(human_rewards) - np.array(ai_rewards)
-        self.human_dataset["reward_diff"] += error.tolist()
-
+        errors = np.array(human_rewards) - np.array(ai_rewards)
+        for i in range(features.shape[0]):
+            self.human_dataset.loc[len(self.human_dataset.index)] = [
+                features[i].cpu(),
+                noise_latents[i].cpu(),
+                human_rewards[i].item(),
+                ai_rewards[i],
+                errors[i],
+            ]
 
 
     ##################################################

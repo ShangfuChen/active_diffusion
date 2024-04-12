@@ -314,7 +314,6 @@ class DDPOTrainer:
     # is move to train()
     def sample(self, logger, epoch, save_images=False, img_save_dir="sampled_images", high_reward_latents=None):
         # TODO logger
-
         self.pipeline.unet.eval()
         self.samples = []
         self.prompts = []
@@ -350,6 +349,7 @@ class DDPOTrainer:
 
             # Add a small perturbation on the high reward latents
             if high_reward_latents is not None:
+                high_reward_latents = high_reward_latents.to(self.accelerator.device)
                 condition_latents = torch.split(high_reward_latents, self.config.sample_batch_size)[i]
                 condition_latents = 0.99995*condition_latents + 0.01*torch.randn(condition_latents.shape).to(self.accelerator.device).to(torch.float16)
                 # condition_latents = None
