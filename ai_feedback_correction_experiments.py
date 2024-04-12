@@ -81,7 +81,7 @@ def pickscore_score_fn(images, prompts, **kwargs):
         toPIL = torchvision.transforms.ToPILImage()
         for im in images:
             imgs.append(toPIL(im))    
-    _, score = calc_probs(kwargs["processor"], kwargs["model"], imgs, prompts, device)
+    _, score = calc_probs(kwargs["processor"], kwargs["model"], imgs, prompts, kwargs["device"])
     return score, {}
 
 
@@ -91,7 +91,7 @@ def pickscore_score_fn(images, prompts, **kwargs):
 MODELS = ["laion", "pickscore"]
 FEATURIZERS = ["sd"]
 
-def initialize_model(model_type):
+def initialize_model(model_type, device):
     """
     Return evaluator model and input arguments EXCLUDING imges and prompts
     """
@@ -106,7 +106,7 @@ def initialize_model(model_type):
         score_fn_inputs = {
             "processor" : AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K"),
             "model" : AutoModel.from_pretrained("yuvalkirstain/PickScore_v1").eval().to(device),
-            "device" : "cuda",
+            "device" : device,
         }
 
     return score_fn, score_fn_inputs
@@ -154,18 +154,25 @@ def extract_images(input_dir, max_images_per_epoch=None,):
             images.append(torchvision.io.read_image(filepath))
             n_saved_images += 1
 
-    return img_paths, torch.stack(images)
+    return image_paths, torch.stack(images)
 
-def get_reward_labels(images, ai_score_fn, ai_score_fn_args, human_score_fn, human_score_fn_args, max_num_images=960, ):
-    max_n_images = 960
-    n_batches = math.ceil(images.shape[0] / max_n_images)
+def get_reward_labels(
+    images, 
+    ai_score_fn, 
+    ai_score_fn_args, 
+    human_score_fn, 
+    human_score_fn_args, 
+    max_num_images=960, 
+):
+    n_batches = math.ceil(images.shape[0] / max_num_images)
     ai_rewards = []
     human_rewards = []
 
+    # if there are too many images to process in a single batch, split 
     for i in range(n_batches):
         print("batch", i)
-        start_idx = i * max_n_images
-        end_idx = images.shape[0] if i == n_batches - 1 else (i+1) * max_n_images
+        start_idx = i * max_num_images
+        end_idx = images.shape[0] if i == n_batches - 1 else (i+1) * max_num_images
         ai_scores, _ = ai_score_fn(images=images[start_idx:end_idx], prompts="a cute cat", **ai_score_fn_args)
         ai_rewards += ai_scores.cpu().tolist()
         human_scores, _ = human_score_fn(images=images[start_idx:end_idx], prompts="a cute cat", **human_score_fn_args)
@@ -173,245 +180,547 @@ def get_reward_labels(images, ai_score_fn, ai_score_fn_args, human_score_fn, hum
 
     return ai_rewards, human_rewards
 
+def _normalize(input, input_range, normalize_range=(1,10)):
+    input_range = np.array(input_range)
+    normalize_range = np.array(normalize_range)
+    scale = (normalize_range[1] - normalize_range[0]) / (input_range[1] - input_range[0])
+    normalized = ((input - input_range.mean()) * scale) + normalize_range[0]
+    return normalized
+
+def _normalize_chunkwise(inputs, chunk_size, normalize_range=(1,10)):
+    n_inputs = inputs.shape[0]
+    n_chunks = math.ceil(n_inputs / chunk_size)
+    for i in range(1, n_chunks):
+        start_idx = i * chunk_size
+        end_idx = n_inputs if i == n_chunks - 1 else start_idx + chunk_size
+        # min and max values up to this point
+        running_min = inputs[:end_idx].min()
+        running_max = inputs[:end_idx].max()
+        # normalize this chunk
+        inputs[start_idx:end_idx] = _normalize(input=inputs[start_idx:end_idx], input_range=(running_min, running_max), normalize_range=normalize_range)
+    return inputs
+
+def run_ai_feedback_correction_test(
+        images, 
+        featurizer_fn,
+        featurizer_type,
+        dataframe, 
+        save_dir="ai_feedback_correction_outputs",
+        experiment_name=None,
+        chunk_size=20,
+    ):
+    reward_processor = RewardProcessor()
+    n_samples = images.shape[0]
+    n_chunks = math.ceil(n_samples / chunk_size)
+    print("computing first batch of features")
+    human_dataset_features = featurize(images=images[:chunk_size], featurizer_fn=featurizer_fn, featurizer_type=featurizer_type)
+    # human_dataset_features = featurizer_fn(images[:chunk_size].float().to("cuda")).cpu()
+    print("first batch of features added to human dataset")
+
+    # values to record for plotting
+    corrected_ai_feedback_errors = []
+    corrected_ai_feedback_percent_errors = []
+    ai_feedback_errors = []
+    ai_feedback_percent_errors = []
+    
+    avg_min_distances = []
+
+    human_rewards = []
+    ai_rewards = []
+
+    # normalized to 1-10 using min and 
+    normalized_human_rewards = []
+    normalized_ai_rewards = []
+
+    # errors between normalized scores
+    normalized_ai_feedback_errors = []
+    normalized_ai_feedback_percent_errors = []
+    normalized_corrected_ai_feedback_errors = []
+    normalized_corrected_ai_feedback_percent_errors = []
+
+    min_ai_rewards_this_batch = []
+    min_ai_rewards_overall = []
+    max_ai_rewards_this_batch = []
+    max_ai_rewards_overall = []
+    min_human_rewards_this_batch = []
+    min_human_rewards_overall = []
+    max_human_rewards_this_batch = []
+    max_human_rewards_overall = []
+
+    n_human_feedback = []
+    for chunk in range(1, n_chunks): 
+        if chunk % 10 == 0: 
+            print(f"chunk {chunk} / {n_chunks}")
+        start_idx = chunk * chunk_size
+        end_idx = n_samples if chunk == n_chunks - 1 else start_idx + chunk_size
+
+        # extract features
+        latents = featurizer_fn(images[start_idx:end_idx].float().to("cuda")).cpu()
+
+        # compute similarity and AI feedback correction
+        min_distances, most_similar_indices = reward_processor._get_most_similar_l2(features1=latents, features2=human_dataset_features)
+        avg_min_distances.append(min_distances.mean())
+        # dists = _compute_l2_distance(features1=latents, features2=human_dataset_features)
+
+        # AI feedback 
+        ai_rewards_for_this_batch = np.array(dataframe["ai_rewards"][start_idx:end_idx])
+        ai_rewards.append(ai_rewards_for_this_batch)
+        normalized_ai_rewards_this_batch = np.array(dataframe["normalized_ai_rewards"][start_idx:end_idx])
+        normalized_ai_rewards.append(normalized_ai_rewards_this_batch.mean())
+
+        # Human feedback
+        human_rewards_for_this_batch = np.array(dataframe["human_rewards"][start_idx:end_idx])
+        human_rewards.append(human_rewards_for_this_batch.mean())
+        normalized_human_rewards_this_batch = np.array(dataframe["normalized_human_rewards"][start_idx:end_idx])
+        normalized_human_rewards.append(normalized_human_rewards_this_batch.mean())
+        
+        # Errors (raw)
+        human_rewards_range = max(dataframe["human_rewards"][:end_idx]) - min(dataframe["human_rewards"][:end_idx]) # range of human rewards so far
+        errors_for_this_batch = np.array(dataframe["errors"])[most_similar_indices]
+        error_raw_ai_and_human = human_rewards_for_this_batch - ai_rewards_for_this_batch
+        ai_feedback_errors.append(error_raw_ai_and_human.mean())
+        ai_feedback_percent_errors.append((error_raw_ai_and_human / human_rewards_range).mean().tolist())
+        
+        ai_rewards_corrected = ai_rewards_for_this_batch + errors_for_this_batch
+        error_corrected_ai_and_human = human_rewards_for_this_batch - ai_rewards_corrected
+        corrected_ai_feedback_errors.append(error_corrected_ai_and_human.mean())
+        percent_error = (error_corrected_ai_and_human / human_rewards_range).mean()
+        corrected_ai_feedback_percent_errors.append(percent_error.tolist())
+
+        # Errors (normalized)
+        normalized_human_rewards_range = max(dataframe["normalized_human_rewards"][:end_idx]) - min(dataframe["normalized_human_rewards"][:end_idx]) # range of human rewards so far
+        normalized_errors_for_this_batch = np.array(["normalized_errors"])[most_similar_indices]
+        normalized_error_raw_ai_and_human = normalized_human_rewards_this_batch - normalized_ai_rewards_this_batch
+        normalized_ai_feedback_errors.append(normalized_error_raw_ai_and_human.mean())
+        normalized_ai_feedback_percent_errors.append((normalized_error_raw_ai_and_human / normalized_human_rewards_range))
+
+        normalized_ai_rewards_corrected = normalized_ai_rewards_this_batch + normalized_errors_for_this_batch
+        normalized_error_corrected_ai_and_human = normalized_human_rewards_this_batch - normalized_ai_rewards_corrected
+        normalized_corrected_ai_feedback_errors.append(normalized_error_corrected_ai_and_human.mean())
+        normalized_percent_error = (normalized_error_corrected_ai_and_human / normalized_human_rewards_range).mean()
+        normalized_corrected_ai_feedback_percent_errors.append(normalized_percent_error.tolist())
+
+        # Additional logging for plotting
+        min_ai_rewards_this_batch.append(min(ai_rewards_for_this_batch))
+        min_ai_rewards_overall.append(min(dataframe["ai_rewards"][:end_idx]))
+        max_ai_rewards_this_batch.append(max(ai_rewards_for_this_batch))
+        max_ai_rewards_overall.append(max(dataframe["ai_rewards"][:end_idx]))
+        min_human_rewards_this_batch.append(min(human_rewards_for_this_batch))
+        min_human_rewards_overall.append(min(dataframe["human_rewards"][:end_idx]))
+        max_human_rewards_this_batch.append(max(human_rewards_for_this_batch))
+        max_human_rewards_overall.append(max(dataframe["human_rewards"][:end_idx]))
+
+        # add this current batch to the human dataset
+        human_dataset_features = torch.cat([human_dataset_features, latents])
+        n_human_feedback.append(start_idx)
+
+    # Plot results
+    experiment_name = experiment_name if experiment_name is not None else datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+    save_dir = os.path.join(save_dir, experiment_name)
+    os.makedirs(save_dir, exist_ok=True)
+
+    # Raw AI and human rewards
+    print("saving human rewards and AI rewards (raw)")
+    plt.plot(n_human_feedback, human_rewards, label="Human")
+    plt.plot(n_human_feedback, ai_rewards, label="AI")
+    plt.title("Human and AI Rewards (raw)")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Score")
+    plt.legend()
+    plt.savefig(os.path.join(save_dir, "raw_ai_and_human_rewards.jpg"))
+    plt.clf()
+
+    # Normalized AI and human rewards
+    print("saving human rewards and AI rewards (normalized)")
+    plt.plot(n_human_feedback, normalized_human_rewards, label="Human")
+    plt.plot(n_human_feedback, normalized_ai_rewards, label="AI")
+    plt.title("Human and AI Rewards (normalized)")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Normalized Score")
+    plt.legend()
+    plt.savefig(os.path.join(save_dir, "normalized_ai_and_human_rewards.jpg"))
+    plt.clf()
+
+    # Error between original AI feedback and human feedback
+    print("saving AI-human error (raw)")
+    plt.plot(n_human_feedback, ai_feedback_errors)
+    plt.title("Error between Raw AI Feedback and Human Feedback")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Error")
+    plt.savefig(os.path.join(save_dir, "raw_ai_human_error.jpg"))
+    plt.clf()
+
+    # Normalized error between original AI feedback and human feedback
+    print("saving normalized AI-human error (raw)")
+    plt.plot(n_human_feedback, normalized_ai_feedback_errors)
+    plt.title("Normalized error between Raw AI Feedback and Human Feedback")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Normalized Error")
+    plt.savefig(os.path.join(save_dir, "normalized_ai_human_error.jpg"))
+    plt.clf()
+
+    # Percent Error between corrected AI feedback and human feedback
+    print("saving AI-human percent error")
+    plt.plot(n_human_feedback, ai_feedback_percent_errors)
+    plt.title("Percent Error between Raw AI Feedback and Human Feedback")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Error")
+    plt.savefig(os.path.join(save_dir, "raw_ai_human_percent_error.jpg"))
+    plt.clf()
+
+    # Normalized percent Error between corrected AI feedback and human feedback
+    print("saving normalized AI-human percent error")
+    plt.plot(n_human_feedback, normalized_ai_feedback_percent_errors)
+    plt.title("Normalized percent Error between Raw AI Feedback and Human Feedback")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Normalized Error")
+    plt.savefig(os.path.join(save_dir, "normalized_ai_human_percent_error.jpg"))
+    plt.clf()
+
+    # Error between corrected AI feedback and human feedback
+    print("saving AI-human error")
+    plt.plot(n_human_feedback, corrected_ai_feedback_errors)
+    plt.title("Error between Corrected AI Feedback and Human Feedback")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Error")
+    plt.savefig(os.path.join(save_dir, "corrected_ai_human_error.jpg"))
+    plt.clf()
+
+    # Normalized error between corrected AI feedback and human feedback
+    print("saving normalized AI(corrected)-human error")
+    plt.plot(n_human_feedback, normalized_corrected_ai_feedback_errors)
+    plt.title("Nromalized error between Corrected AI Feedback and Human Feedback")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Normalized Error")
+    plt.savefig(os.path.join(save_dir, "normalized_corrected_ai_human_error.jpg"))
+    plt.clf()
+
+    # Percent Error between corrected AI feedback and human feedback
+    print("saving AI(corrected)-human percent error")
+    plt.plot(n_human_feedback, corrected_ai_feedback_percent_errors)
+    plt.title("Percent Error between Corrected AI Feedback and Human Feedback")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Score Error")
+    plt.savefig(os.path.join(save_dir, "corrected_ai_human_percent_error.jpg"))
+    plt.clf()
+
+    # Percent Error between normalized and corrected AI feedback and human feedback
+    print("saving AI(corrected)-human percent error (normalized)")
+    plt.plot(n_human_feedback, normalized_corrected_ai_feedback_percent_errors)
+    plt.title("Normalized percent Error between Corrected AI Feedback and Human Feedback")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Normalized Error")
+    plt.savefig(os.path.join(save_dir, "normalized_corrected_ai_human_percent_error.jpg"))
+    plt.clf()
+
+    # Mean minimum distance between current batch samples and samples in human dataset
+    print("saving min and max rewards")
+    plt.plot(n_human_feedback, avg_min_distances)
+    plt.title("Avg Min Distance to Human Dataset")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Average Minimum Distance")
+    plt.savefig(os.path.join(save_dir, "avg_min_dist_to_human_dataset.jpg"))
+    plt.clf()
+
+    # Minimum and maximum AI and human feedback for each batch and overall
+    plt.fill_between(n_human_feedback, min_ai_rewards_this_batch, max_ai_rewards_this_batch, alpha=0.2)
+    plt.fill_between(n_human_feedback, min_ai_rewards_overall, max_ai_rewards_overall, alpha=0.2)
+    plt.fill_between(n_human_feedback, min_human_rewards_this_batch, max_human_rewards_this_batch, alpha=0.2)
+    plt.fill_between(n_human_feedback, min_human_rewards_overall, max_human_rewards_overall, alpha=0.2)
+    plt.title("AI and Human Feedback Range")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Feedback Range")
+    plt.legend(["AI (this batch)", "AI (overall)", "Human (this batch)", "Human (overall)"])
+    plt.savefig(os.path.join(save_dir, "feedback_range.jpg"))
+    plt.clf()
+
+    print("Done saving figures")
+
 def main(args):
+    
+    # initialize dataframe to save all info
+    df = pd.DataFrame(
+        columns=[
+            "img_paths", 
+            "human_rewards",
+            "ai_rewards",
+            "errors", # R_H - R_AI
+            "normalized_human_rewards",
+            "normalized_ai_rewards"
+            "normalized_errors",
+        ],
+    )
+
     # initialize according to human and AI agents
-    ai_evaluator, ai_evaluator_args = initialize_model(model_type=args.ai)
-    human_evaluator, human_evaluator_args = initialize_model(model_type=args.human)
+    ai_evaluator, ai_evaluator_args = initialize_model(model_type=args.ai, device=args.device)
+    human_evaluator, human_evaluator_args = initialize_model(model_type=args.human, device=args.device)
+
+    # initialize featurizer model
+    featurizer_fn = initialize_featurizer(featurizer_type=args.featurizer)
 
     # read images from input directory
-    img_paths, imgs = extract_images(input_dir=args.input_dir)
+    img_paths, imgs = extract_images(input_dir=args.input_dir, max_images_per_epoch=args.n_imgs_per_epoch)
 
     # get AI and human rewards
-    ai_rewards, human_rewards = get_reward_labels() # TODO start here
-    # collect data
+    ai_rewards, human_rewards = get_reward_labels(
+        images=imgs,
+        ai_score_fn=ai_evaluator,
+        ai_score_fn_args=ai_evaluator_args,
+        human_score_fn=human_evaluator,
+        human_score_fn_args=human_evaluator_args,
+    )
+    normalize_range = (1, 10)
+    normalized_ai_rewards = _normalize_chunkwise(inputs=np.array(ai_rewards), chunk_size=args.chunk_size, normalize_range=normalize_range)
+    normalized_human_rewards = _normalize_chunkwise(inputs=np.array(human_rewards), chunk_size=args.chunk_size, normalize_range=normalize_range)
 
-    # plot
+    df["img_paths"] = img_paths
+    df["human_rewards"] = human_rewards
+    df["ai_rewards"] = ai_rewards
+    df["errors"] = np.array(human_rewards) - np.array(ai_rewards) 
+    df["normalized_human_rewads"] = normalized_human_rewards
+    df["normalized_ai_rewards"] = normalized_ai_rewards
+    df["normalized_error"] = normalized_human_rewards - normalized_ai_rewards
+    print("human and ai dataframe is ready")
 
-    pass
+    # run ai feedback correction test
+    run_ai_feedback_correction_test(
+        images=imgs, 
+        featurizer_fn=featurizer_fn, 
+        featurizer_type=args.featurizer,
+        chunk_size=args.chunk_size, 
+        save_dir=args.save_dir, 
+        experiment_name=args.name,
+        dataframe=df,
+    )
 
-# if __name__ == "__main__":
-#     parser = argparse.ArgumentParser()
-#     parser.add_argument("--input-dir", type=str)
-#     parser.add_argument("--ai", type=str, default="laion")
-#     parser.add_argument("--human", type=str, default="pickscore")
-#     parser.add_argument("--featurizer", type=str, default="sd")
-#     parser.add_argument("--save-dir", type=str, default="/home/ayanoh/ai_correction_experiments")
-#     parser.add_argument("--name", type=str)
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--input-dir", type=str)
+    parser.add_argument("--ai", type=str, default="laion")
+    parser.add_argument("--human", type=str, default="pickscore")
+    parser.add_argument("--featurizer", type=str, default="sd")
+    parser.add_argument("--save-dir", type=str, default="/home/ayanoh/ai_correction_experiments")
+    parser.add_argument("--n-imgs-per-epoch", type=int)
+    parser.add_argument("--chunk-size", type=int, default=20)
+    parser.add_argument("--device", type=str, default="cuda")
+    parser.add_argument("--name", type=str)
+
+    args = parser.parse_args()
+    main(args)
 
 
 #############################################################
 # Initialization
 #############################################################
-input_dir = "/home/ayanoh/all_aesthetic"
-device = "cuda"
-df = pd.DataFrame(
-    columns=[
-        "img_paths", 
-        "human_rewards",
-        "ai_rewards",
-        "errors", # R_H - R_AI
-    ],
-)
-reward_processor = RewardProcessor()
+# input_dir = "/home/ayanoh/all_aesthetic"
+# device = "cuda"
+# df = pd.DataFrame(
+#     columns=[
+#         "img_paths", 
+#         "human_rewards",
+#         "ai_rewards",
+#         "errors", # R_H - R_AI
+#     ],
+# )
+# reward_processor = RewardProcessor()
 
-# dummy human and AI evaluator models
-aesthetics_evaluator = AestheticScorer(dtype=torch.float32).cuda()
-pickscore_model = AutoModel.from_pretrained("yuvalkirstain/PickScore_v1").eval().to(device)
-pickscore_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
+# # dummy human and AI evaluator models
+# aesthetics_evaluator = AestheticScorer(dtype=torch.float32).cuda()
+# pickscore_model = AutoModel.from_pretrained("yuvalkirstain/PickScore_v1").eval().to(device)
+# pickscore_processor = AutoProcessor.from_pretrained("laion/CLIP-ViT-H-14-laion2B-s32B-b79K")
 
-# model for feature extraction
-pretrained_model_path = "runwayml/stable-diffusion-v1-5"
-pretrained_revision = "main"
-pipeline = StableDiffusionPipeline.from_pretrained(
-    pretrained_model_path, 
-    revision=pretrained_revision
-).to("cuda")
+# # model for feature extraction
+# pretrained_model_path = "runwayml/stable-diffusion-v1-5"
+# pretrained_revision = "main"
+# pipeline = StableDiffusionPipeline.from_pretrained(
+#     pretrained_model_path, 
+#     revision=pretrained_revision
+# ).to("cuda")
 
-pipeline.vae.requires_grad_(False)
-pipeline.text_encoder.requires_grad_(False)
-pipeline.unet.requires_grad_(False)
-pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
-encoder = pipeline.vae.encoder
+# pipeline.vae.requires_grad_(False)
+# pipeline.text_encoder.requires_grad_(False)
+# pipeline.unet.requires_grad_(False)
+# pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+# encoder = pipeline.vae.encoder
 
-#############################################################
-# Extract images
-#############################################################
-img_paths = [] # image paths
-imgs = [] # image tensors
-n_images_per_epoch = 256 # number of images to save from each epoch
-for epoch in os.listdir(input_dir):
-    # print("storing images for epoch", epoch)
-    n_saved_images = 0
-    for img in os.listdir(os.path.join(input_dir, epoch)):
-        if n_saved_images >= n_images_per_epoch:
-            break
-        filepath = os.path.join(input_dir, epoch, img)
-        img_paths.append(filepath)
-        imgs.append(torchvision.io.read_image(filepath))
-        n_saved_images += 1
-    # print("done")
-print("finished storing images for all epochs")
+# #############################################################
+# # Extract images
+# #############################################################
+# img_paths = [] # image paths
+# imgs = [] # image tensors
+# n_images_per_epoch = 256 # number of images to save from each epoch
+# for epoch in os.listdir(input_dir):
+#     # print("storing images for epoch", epoch)
+#     n_saved_images = 0
+#     for img in os.listdir(os.path.join(input_dir, epoch)):
+#         if n_saved_images >= n_images_per_epoch:
+#             break
+#         filepath = os.path.join(input_dir, epoch, img)
+#         img_paths.append(filepath)
+#         imgs.append(torchvision.io.read_image(filepath))
+#         n_saved_images += 1
+#     # print("done")
+# print("finished storing images for all epochs")
     
 
-#############################################################
-# Get human and AI reward labels
-#############################################################
-# pass images in incrementally if total number of images is too large for single batch
-max_n_images = 960
-imgs = torch.stack(imgs)
-n_batches = math.ceil(imgs.shape[0] / max_n_images)
-ai_rewards = []
-human_rewards = []
+# #############################################################
+# # Get human and AI reward labels
+# #############################################################
+# # pass images in incrementally if total number of images is too large for single batch
+# max_n_images = 960
+# imgs = torch.stack(imgs)
+# n_batches = math.ceil(imgs.shape[0] / max_n_images)
+# ai_rewards = []
+# human_rewards = []
 
-for i in range(n_batches):
-    print("batch", i)
-    start_idx = i * max_n_images
-    end_idx = imgs.shape[0] if i == n_batches - 1 else (i+1) * max_n_images
-    ai_scores, _ = aesthetic_score_fn(images=imgs[start_idx:end_idx], prompts="a cute cat", scorer=aesthetics_evaluator)
-    ai_rewards += ai_scores.cpu().tolist()
-    human_scores, _ = pickscore_score_fn(processor=pickscore_processor, model=pickscore_model, images=imgs[start_idx:end_idx], prompts="a cute cat", device=device)
-    human_rewards += human_scores
+# for i in range(n_batches):
+#     print("batch", i)
+#     start_idx = i * max_n_images
+#     end_idx = imgs.shape[0] if i == n_batches - 1 else (i+1) * max_n_images
+#     ai_scores, _ = aesthetic_score_fn(images=imgs[start_idx:end_idx], prompts="a cute cat", scorer=aesthetics_evaluator)
+#     ai_rewards += ai_scores.cpu().tolist()
+#     human_scores, _ = pickscore_score_fn(processor=pickscore_processor, model=pickscore_model, images=imgs[start_idx:end_idx], prompts="a cute cat", device=device)
+#     human_rewards += human_scores
 
-df["img_paths"] = img_paths
-df["human_rewards"] = human_rewards
-df["ai_rewards"] = ai_rewards
-df["errors"] = np.array(human_rewards) - np.array(ai_rewards) 
-print("human and ai dataframe is ready")
+# df["img_paths"] = img_paths
+# df["human_rewards"] = human_rewards
+# df["ai_rewards"] = ai_rewards
+# df["errors"] = np.array(human_rewards) - np.array(ai_rewards) 
+# print("human and ai dataframe is ready")
 
-#############################################################
-# Record relationship between human dataset size and error
-#############################################################
-n_samples = imgs.shape[0]
-chunk_size = 10
-n_chunks = math.ceil(n_samples / chunk_size)
-print("computing first batch of features")
-human_dataset_features = encoder(imgs[:chunk_size].float().to("cuda")).cpu()
-print("first batch of features added to human dataset")
+# #############################################################
+# # Record relationship between human dataset size and error
+# #############################################################
+# n_samples = imgs.shape[0]
+# chunk_size = 10
+# n_chunks = math.ceil(n_samples / chunk_size)
+# print("computing first batch of features")
+# human_dataset_features = encoder(imgs[:chunk_size].float().to("cuda")).cpu()
+# print("first batch of features added to human dataset")
 
-# values to record for plotting
-corrected_ai_feedback_errors = []
-corrected_ai_feedback_percent_errors = []
-ai_feedback_errors = []
-ai_feedback_percent_errors = []
-avg_min_distances = []
-min_ai_rewards_this_batch = []
-min_ai_rewards_overall = []
-max_ai_rewards_this_batch = []
-max_ai_rewards_overall = []
-min_human_rewards_this_batch = []
-min_human_rewards_overall = []
-max_human_rewards_this_batch = []
-max_human_rewards_overall = []
+# # values to record for plotting
+# corrected_ai_feedback_errors = []
+# corrected_ai_feedback_percent_errors = []
+# ai_feedback_errors = []
+# ai_feedback_percent_errors = []
+# avg_min_distances = []
+# min_ai_rewards_this_batch = []
+# min_ai_rewards_overall = []
+# max_ai_rewards_this_batch = []
+# max_ai_rewards_overall = []
+# min_human_rewards_this_batch = []
+# min_human_rewards_overall = []
+# max_human_rewards_this_batch = []
+# max_human_rewards_overall = []
 
-n_human_feedback = []
-for chunk in range(1, n_chunks): 
-    if chunk % 10 == 0: 
-        print(f"chunk {chunk} / {n_chunks}")
-    start_idx = chunk * chunk_size
-    end_idx = n_samples if chunk == n_chunks - 1 else start_idx + chunk_size
+# n_human_feedback = []
+# for chunk in range(1, n_chunks): 
+#     if chunk % 10 == 0: 
+#         print(f"chunk {chunk} / {n_chunks}")
+#     start_idx = chunk * chunk_size
+#     end_idx = n_samples if chunk == n_chunks - 1 else start_idx + chunk_size
 
-    # extract features
-    latents = encoder(imgs[start_idx:end_idx].float().to("cuda")).cpu()
+#     # extract features
+#     latents = encoder(imgs[start_idx:end_idx].float().to("cuda")).cpu()
 
-    # compute similarity and AI feedback correction
-    min_distances, most_similar_indices = reward_processor._get_most_similar_l2(features1=latents, features2=human_dataset_features)
-    avg_min_distances.append(min_distances.mean())
-    # dists = _compute_l2_distance(features1=latents, features2=human_dataset_features)
+#     # compute similarity and AI feedback correction
+#     min_distances, most_similar_indices = reward_processor._get_most_similar_l2(features1=latents, features2=human_dataset_features)
+#     avg_min_distances.append(min_distances.mean())
+#     # dists = _compute_l2_distance(features1=latents, features2=human_dataset_features)
 
-    # get corrected AI feedback 
-    ai_rewards_for_this_batch = np.array(df["ai_rewards"][start_idx:end_idx])
-    errors_for_this_batch = np.array(df["errors"])[most_similar_indices]
-    ai_rewards_corrected = ai_rewards_for_this_batch + errors_for_this_batch
+#     # get corrected AI feedback 
+#     ai_rewards_for_this_batch = np.array(df["ai_rewards"][start_idx:end_idx])
+#     errors_for_this_batch = np.array(df["errors"])[most_similar_indices]
+#     ai_rewards_corrected = ai_rewards_for_this_batch + errors_for_this_batch
 
-    # compare corrected AI feedback and human feedback
-    human_rewards_for_this_batch = np.array(df["human_rewards"][start_idx:end_idx])
-    error_corrected_ai_and_human = human_rewards_for_this_batch - ai_rewards_corrected
+#     # compare corrected AI feedback and human feedback
+#     human_rewards_for_this_batch = np.array(df["human_rewards"][start_idx:end_idx])
+#     error_corrected_ai_and_human = human_rewards_for_this_batch - ai_rewards_corrected
 
-    # log for plotting
-    corrected_ai_feedback_errors.append(error_corrected_ai_and_human.mean())
-    human_rewards_range = max(df["human_rewards"][:end_idx]) - min(df["human_rewards"][:end_idx]) # range of human rewards so far
-    percent_error = (error_corrected_ai_and_human / human_rewards_range).mean()
-    corrected_ai_feedback_percent_errors.append(percent_error.tolist())
+#     # log for plotting
+#     corrected_ai_feedback_errors.append(error_corrected_ai_and_human.mean())
+#     human_rewards_range = max(df["human_rewards"][:end_idx]) - min(df["human_rewards"][:end_idx]) # range of human rewards so far
+#     percent_error = (error_corrected_ai_and_human / human_rewards_range).mean()
+#     corrected_ai_feedback_percent_errors.append(percent_error.tolist())
 
-    error_raw_ai_and_human = human_rewards_for_this_batch - ai_rewards_for_this_batch
-    ai_feedback_errors.append(error_raw_ai_and_human.mean())
-    ai_feedback_percent_errors.append((error_raw_ai_and_human / human_rewards_range).mean().tolist())
+#     error_raw_ai_and_human = human_rewards_for_this_batch - ai_rewards_for_this_batch
+#     ai_feedback_errors.append(error_raw_ai_and_human.mean())
+#     ai_feedback_percent_errors.append((error_raw_ai_and_human / human_rewards_range).mean().tolist())
     
-    min_ai_rewards_this_batch.append(min(ai_rewards_for_this_batch))
-    min_ai_rewards_overall.append(min(df["ai_rewards"][:end_idx]))
-    max_ai_rewards_this_batch.append(max(ai_rewards_for_this_batch))
-    max_ai_rewards_overall.append(max(df["ai_rewards"][:end_idx]))
-    min_human_rewards_this_batch.append(min(human_rewards_for_this_batch))
-    min_human_rewards_overall.append(min(df["human_rewards"][:end_idx]))
-    max_human_rewards_this_batch.append(max(human_rewards_for_this_batch))
-    max_human_rewards_overall.append(max(df["human_rewards"][:end_idx]))
+#     min_ai_rewards_this_batch.append(min(ai_rewards_for_this_batch))
+#     min_ai_rewards_overall.append(min(df["ai_rewards"][:end_idx]))
+#     max_ai_rewards_this_batch.append(max(ai_rewards_for_this_batch))
+#     max_ai_rewards_overall.append(max(df["ai_rewards"][:end_idx]))
+#     min_human_rewards_this_batch.append(min(human_rewards_for_this_batch))
+#     min_human_rewards_overall.append(min(df["human_rewards"][:end_idx]))
+#     max_human_rewards_this_batch.append(max(human_rewards_for_this_batch))
+#     max_human_rewards_overall.append(max(df["human_rewards"][:end_idx]))
 
-    # add this current batch to the human dataset
-    human_dataset_features = torch.cat([human_dataset_features, latents])
-    n_human_feedback.append(start_idx)
+#     # add this current batch to the human dataset
+#     human_dataset_features = torch.cat([human_dataset_features, latents])
+#     n_human_feedback.append(start_idx)
     
-#############################################################
-# Plot results
-#############################################################
-save_dir = os.path.join("/home/ayanoh/ai_correction_experiments", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
-os.makedirs(save_dir, exist_ok=True)
+# #############################################################
+# # Plot results
+# #############################################################
+# save_dir = os.path.join("/home/ayanoh/ai_correction_experiments", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+# os.makedirs(save_dir, exist_ok=True)
 
-# Error between corrected AI feedback and human feedback
-print("saving AI-human error (raw)")
-plt.plot(n_human_feedback, ai_feedback_errors)
-plt.title("Error between Raw AI Feedback and Human Feedback")
-plt.xlabel("N Human Feedback")
-plt.ylabel("Score Error")
-plt.savefig(os.path.join(save_dir, "raw_ai_human_error.jpg"))
-plt.clf()
+# # Error between corrected AI feedback and human feedback
+# print("saving AI-human error (raw)")
+# plt.plot(n_human_feedback, ai_feedback_errors)
+# plt.title("Error between Raw AI Feedback and Human Feedback")
+# plt.xlabel("N Human Feedback")
+# plt.ylabel("Score Error")
+# plt.savefig(os.path.join(save_dir, "raw_ai_human_error.jpg"))
+# plt.clf()
 
-# Percent Error between corrected AI feedback and human feedback
-print("saving AI-human percent error")
-plt.plot(n_human_feedback, ai_feedback_percent_errors)
-plt.title("Percent Error between Raw AI Feedback and Human Feedback")
-plt.xlabel("N Human Feedback")
-plt.ylabel("Score Error")
-plt.savefig(os.path.join(save_dir, "raw_ai_human_percent_error.jpg"))
-plt.clf()
+# # Percent Error between corrected AI feedback and human feedback
+# print("saving AI-human percent error")
+# plt.plot(n_human_feedback, ai_feedback_percent_errors)
+# plt.title("Percent Error between Raw AI Feedback and Human Feedback")
+# plt.xlabel("N Human Feedback")
+# plt.ylabel("Score Error")
+# plt.savefig(os.path.join(save_dir, "raw_ai_human_percent_error.jpg"))
+# plt.clf()
 
+# # Error between corrected AI feedback and human feedback
+# print("saving AI-human error")
+# plt.plot(n_human_feedback, corrected_ai_feedback_errors)
+# plt.title("Error between Corrected AI Feedback and Human Feedback")
+# plt.xlabel("N Human Feedback")
+# plt.ylabel("Score Error")
+# plt.savefig(os.path.join(save_dir, "corrected_ai_human_error.jpg"))
+# plt.clf()
 
-# Error between corrected AI feedback and human feedback
-print("saving AI-human error")
-plt.plot(n_human_feedback, corrected_ai_feedback_errors)
-plt.title("Error between Corrected AI Feedback and Human Feedback")
-plt.xlabel("N Human Feedback")
-plt.ylabel("Score Error")
-plt.savefig(os.path.join(save_dir, "corrected_ai_human_error.jpg"))
-plt.clf()
+# # Percent Error between corrected AI feedback and human feedback
+# print("saving AI-human percent error")
+# plt.plot(n_human_feedback, corrected_ai_feedback_percent_errors)
+# plt.title("Percent Error between Corrected AI Feedback and Human Feedback")
+# plt.xlabel("N Human Feedback")
+# plt.ylabel("Score Error")
+# plt.savefig(os.path.join(save_dir, "corrected_ai_human_percent_error.jpg"))
+# plt.clf()
 
-# Percent Error between corrected AI feedback and human feedback
-print("saving AI-human percent error")
-plt.plot(n_human_feedback, corrected_ai_feedback_percent_errors)
-plt.title("Percent Error between Corrected AI Feedback and Human Feedback")
-plt.xlabel("N Human Feedback")
-plt.ylabel("Score Error")
-plt.savefig(os.path.join(save_dir, "corrected_ai_human_percent_error.jpg"))
-plt.clf()
+# # Mean minimum distance between current batch samples and samples in human dataset
+# print("saving min and max rewards")
+# plt.plot(n_human_feedback, avg_min_distances)
+# plt.title("Avg Min Distance to Human Dataset")
+# plt.xlabel("N Human Feedback")
+# plt.ylabel("Average Minimum Distance")
+# plt.savefig(os.path.join(save_dir, "avg_min_dist_to_human_dataset.jpg"))
+# plt.clf()
 
-# Mean minimum distance between current batch samples and samples in human dataset
-print("saving min and max rewards")
-plt.plot(n_human_feedback, avg_min_distances)
-plt.title("Avg Min Distance to Human Dataset")
-plt.xlabel("N Human Feedback")
-plt.ylabel("Average Minimum Distance")
-plt.savefig(os.path.join(save_dir, "avg_min_dist_to_human_dataset.jpg"))
-plt.clf()
+# # Minimum and maximum AI and human feedback for each batch and overall
+# plt.fill_between(n_human_feedback, min_ai_rewards_this_batch, max_ai_rewards_this_batch, alpha=0.2)
+# plt.fill_between(n_human_feedback, min_ai_rewards_overall, max_ai_rewards_overall, alpha=0.2)
+# plt.fill_between(n_human_feedback, min_human_rewards_this_batch, max_human_rewards_this_batch, alpha=0.2)
+# plt.fill_between(n_human_feedback, min_human_rewards_overall, max_human_rewards_overall, alpha=0.2)
+# plt.title("AI and Human Feedback Range")
+# plt.xlabel("N Human Feedback")
+# plt.ylabel("Feedback Range")
+# plt.legend(["AI (this batch)", "AI (overall)", "Human (this batch)", "Human (overall)"])
+# plt.savefig(os.path.join(save_dir, "feedback_range.jpg"))
+# plt.clf()
 
-# Minimum and maximum AI and human feedback for each batch and overall
-plt.fill_between(n_human_feedback, min_ai_rewards_this_batch, max_ai_rewards_this_batch, alpha=0.2)
-plt.fill_between(n_human_feedback, min_ai_rewards_overall, max_ai_rewards_overall, alpha=0.2)
-plt.fill_between(n_human_feedback, min_human_rewards_this_batch, max_human_rewards_this_batch, alpha=0.2)
-plt.fill_between(n_human_feedback, min_human_rewards_overall, max_human_rewards_overall, alpha=0.2)
-plt.title("AI and Human Feedback Range")
-plt.xlabel("N Human Feedback")
-plt.ylabel("Feedback Range")
-plt.legend(["AI (this batch)", "AI (overall)", "Human (this batch)", "Human (overall)"])
-plt.savefig(os.path.join(save_dir, "feedback_range.jpg"))
-plt.clf()
-
-print("Done saving figures")
+# print("Done saving figures")
