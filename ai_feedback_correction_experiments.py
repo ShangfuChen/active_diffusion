@@ -228,9 +228,10 @@ def run_ai_feedback_correction_test(
     human_rewards = []
     ai_rewards = []
 
-    # normalized to 1-10 using min and 
+    # normalized to 1-10 using min and max so far
     normalized_human_rewards = []
     normalized_ai_rewards = []
+    normalized_corrected_ai_feedback = []
 
     # errors between normalized scores
     normalized_ai_feedback_errors = []
@@ -264,7 +265,7 @@ def run_ai_feedback_correction_test(
 
         # AI feedback 
         ai_rewards_for_this_batch = np.array(dataframe["ai_rewards"][start_idx:end_idx])
-        ai_rewards.append(ai_rewards_for_this_batch)
+        ai_rewards.append(ai_rewards_for_this_batch.mean())
         normalized_ai_rewards_this_batch = np.array(dataframe["normalized_ai_rewards"][start_idx:end_idx])
         normalized_ai_rewards.append(normalized_ai_rewards_this_batch.mean())
 
@@ -289,12 +290,13 @@ def run_ai_feedback_correction_test(
 
         # Errors (normalized)
         normalized_human_rewards_range = max(dataframe["normalized_human_rewards"][:end_idx]) - min(dataframe["normalized_human_rewards"][:end_idx]) # range of human rewards so far
-        normalized_errors_for_this_batch = np.array(["normalized_errors"])[most_similar_indices]
+        normalized_errors_for_this_batch = np.array(dataframe["normalized_errors"])[most_similar_indices]
         normalized_error_raw_ai_and_human = normalized_human_rewards_this_batch - normalized_ai_rewards_this_batch
         normalized_ai_feedback_errors.append(normalized_error_raw_ai_and_human.mean())
-        normalized_ai_feedback_percent_errors.append((normalized_error_raw_ai_and_human / normalized_human_rewards_range))
+        normalized_ai_feedback_percent_errors.append((normalized_error_raw_ai_and_human / normalized_human_rewards_range).mean())
 
         normalized_ai_rewards_corrected = normalized_ai_rewards_this_batch + normalized_errors_for_this_batch
+        normalized_corrected_ai_feedback.append(normalized_ai_rewards_corrected.mean())
         normalized_error_corrected_ai_and_human = normalized_human_rewards_this_batch - normalized_ai_rewards_corrected
         normalized_corrected_ai_feedback_errors.append(normalized_error_corrected_ai_and_human.mean())
         normalized_percent_error = (normalized_error_corrected_ai_and_human / normalized_human_rewards_range).mean()
@@ -341,6 +343,17 @@ def run_ai_feedback_correction_test(
     plt.savefig(os.path.join(save_dir, "normalized_ai_and_human_rewards.jpg"))
     plt.clf()
 
+    # Normalized Corrected AI and human rewards
+    print("saving human rewards and AI rewards (normalized, corrected)")
+    plt.plot(n_human_feedback, normalized_human_rewards, label="Human")
+    plt.plot(n_human_feedback, normalized_corrected_ai_feedback, label="AI (corrected)")
+    plt.title("Human and AI Rewards (normalized, corrected)")
+    plt.xlabel("N Human Feedback")
+    plt.ylabel("Normalized Score")
+    plt.legend()
+    plt.savefig(os.path.join(save_dir, "normalized_corrected_ai_and_human_rewards.jpg"))
+    plt.clf()
+
     # Error between original AI feedback and human feedback
     print("saving AI-human error (raw)")
     plt.plot(n_human_feedback, ai_feedback_errors)
@@ -383,7 +396,7 @@ def run_ai_feedback_correction_test(
     plt.title("Error between Corrected AI Feedback and Human Feedback")
     plt.xlabel("N Human Feedback")
     plt.ylabel("Error")
-    plt.savefig(os.path.join(save_dir, "corrected_ai_human_error.jpg"))
+    plt.savefig(os.path.join(save_dir, "raw_corrected_ai_human_error.jpg"))
     plt.clf()
 
     # Normalized error between corrected AI feedback and human feedback
@@ -401,7 +414,7 @@ def run_ai_feedback_correction_test(
     plt.title("Percent Error between Corrected AI Feedback and Human Feedback")
     plt.xlabel("N Human Feedback")
     plt.ylabel("Score Error")
-    plt.savefig(os.path.join(save_dir, "corrected_ai_human_percent_error.jpg"))
+    plt.savefig(os.path.join(save_dir, "raw_corrected_ai_human_percent_error.jpg"))
     plt.clf()
 
     # Percent Error between normalized and corrected AI feedback and human feedback
@@ -423,10 +436,10 @@ def run_ai_feedback_correction_test(
     plt.clf()
 
     # Minimum and maximum AI and human feedback for each batch and overall
-    plt.fill_between(n_human_feedback, min_ai_rewards_this_batch, max_ai_rewards_this_batch, alpha=0.2)
-    plt.fill_between(n_human_feedback, min_ai_rewards_overall, max_ai_rewards_overall, alpha=0.2)
-    plt.fill_between(n_human_feedback, min_human_rewards_this_batch, max_human_rewards_this_batch, alpha=0.2)
-    plt.fill_between(n_human_feedback, min_human_rewards_overall, max_human_rewards_overall, alpha=0.2)
+    plt.fill_between(n_human_feedback, min_ai_rewards_this_batch, max_ai_rewards_this_batch, alpha=0.2, label="AI (this batch)")
+    plt.fill_between(n_human_feedback, min_ai_rewards_overall, max_ai_rewards_overall, alpha=0.2, label="AI (overall)")
+    plt.fill_between(n_human_feedback, min_human_rewards_this_batch, max_human_rewards_this_batch, alpha=0.2, label="Human (this batch)")
+    plt.fill_between(n_human_feedback, min_human_rewards_overall, max_human_rewards_overall, alpha=0.2, label="Human (overall)")
     plt.title("AI and Human Feedback Range")
     plt.xlabel("N Human Feedback")
     plt.ylabel("Feedback Range")
@@ -477,9 +490,9 @@ def main(args):
     df["human_rewards"] = human_rewards
     df["ai_rewards"] = ai_rewards
     df["errors"] = np.array(human_rewards) - np.array(ai_rewards) 
-    df["normalized_human_rewads"] = normalized_human_rewards
+    df["normalized_human_rewards"] = normalized_human_rewards
     df["normalized_ai_rewards"] = normalized_ai_rewards
-    df["normalized_error"] = normalized_human_rewards - normalized_ai_rewards
+    df["normalized_errors"] = normalized_human_rewards - normalized_ai_rewards
     print("human and ai dataframe is ready")
 
     # run ai feedback correction test
@@ -499,7 +512,7 @@ if __name__ == "__main__":
     parser.add_argument("--ai", type=str, default="laion")
     parser.add_argument("--human", type=str, default="pickscore")
     parser.add_argument("--featurizer", type=str, default="sd")
-    parser.add_argument("--save-dir", type=str, default="/home/ayanoh/ai_correction_experiments")
+    parser.add_argument("--save-dir", type=str, default="/home/hayano/ai_correction_experiments")
     parser.add_argument("--n-imgs-per-epoch", type=int)
     parser.add_argument("--chunk-size", type=int, default=20)
     parser.add_argument("--device", type=str, default="cuda")
