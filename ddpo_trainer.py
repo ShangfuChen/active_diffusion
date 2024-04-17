@@ -432,68 +432,6 @@ class DDPOTrainer:
             # if using trainable reward model (pickscore), rewards will be computed in the train loop after reward model has been updated
             return samples, self.prompts
 
-    """
-    Sample images and prompts with a given number of batch
-    """
-    # NOTE: Remove reward_model and processor args because reward calculation
-    # is move to train()
-    def sample_num_batch(self, num_batch):
-        self.pipeline.unet.eval()
-        samples = []
-        prompts_list = []
-        for i in self.tqdm(
-            range(num_batch),
-            desc=f"Sampling with specified number of batch", # TODO
-            disable=not self.accelerator.is_local_main_process,
-            position=0,
-        ):
-            # generate prompts
-            # original prompts function that sample a prompt at a time
-            prompts, prompt_metadata = zip(
-                *[
-                    self.prompt_fn()
-                    for _ in range(self.config.sample_batch_size)
-                ]
-            )
-            # for cute_animal only
-            # prompts = self.prompt_fn(self.config.sample_batch_size)
-
-            # encode prompts
-            prompt_ids = self.pipeline.tokenizer(
-                prompts,
-                return_tensors="pt",
-                padding="max_length",
-                truncation=True,
-                max_length=self.pipeline.tokenizer.model_max_length,
-            ).input_ids.to(self.accelerator.device)
-            prompt_embeds = self.pipeline.text_encoder(prompt_ids)[0]
-
-            # sample
-            with self.autocast():
-                images, _, latents, log_probs = pipeline_with_logprob(
-                    self.pipeline,
-                    prompt_embeds=prompt_embeds,
-                    negative_prompt_embeds=self.sample_neg_prompt_embeds,
-                    num_inference_steps=self.config.sample_num_steps,
-                    guidance_scale=self.config.sample_guidance_scale,
-                    eta=self.config.sample_eta,
-                    output_type="pt",
-                )
-
-            latents = torch.stack(
-                latents, dim=1
-            )  # (batch_size, num_steps + 1, 4, 64, 64)
-            log_probs = torch.stack(log_probs, dim=1)  # (batch_size, num_steps, 1)
-            timesteps = self.pipeline.scheduler.timesteps.repeat(
-                self.config.sample_batch_size, 1
-            )  # (batch_size, num_steps)
-            samples.append(
-                {"images": images,}
-            )
-            prompts_list.append(prompts)
-        # return tensor of images
-        samples = torch.cat([sample["images"] for sample in samples])
-        return samples, prompts_list
 
     def train(self, logger, epoch, reward_model, processor):
 
@@ -671,7 +609,7 @@ class DDPOTrainer:
                                     * (noise_pred_text - noise_pred_uncond)
                                 )
                             else:
-                                noise_pred = unet(
+                                noise_pred = self.unet(
                                     sample["latents"][:, j],
                                     sample["timesteps"][:, j],
                                     embeds,
@@ -873,6 +811,7 @@ class DDPOTrainer:
             ]
 
             # train
+            self.unet.train()
             self.pipeline.unet.train()
             info = defaultdict(list)
             for i, sample in self.tqdm(
@@ -912,7 +851,7 @@ class DDPOTrainer:
                                     * (noise_pred_text - noise_pred_uncond)
                                 )
                             else:
-                                noise_pred = unet(
+                                noise_pred = self.unet(
                                     sample["latents"][:, j],
                                     sample["timesteps"][:, j],
                                     embeds,
@@ -961,7 +900,6 @@ class DDPOTrainer:
                             )
                         )
                         info["ddpo_loss"].append(loss)
-
                         # backward pass
                         self.accelerator.backward(loss)
                         if self.accelerator.sync_gradients:

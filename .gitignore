@@ -1,6 +1,7 @@
 wandb/
 logs/
 test_output/
+lcm_rl_pytorch/to_del
 __pycache__/
 *.pyc
 *.zip

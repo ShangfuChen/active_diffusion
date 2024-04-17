@@ -89,6 +89,7 @@ def color_score():
             other = np.mean(images[:, 1:, :, :], axis=(1, 2, 3))
             score = 1 + (red - other)*9
             score += np.random.randn(score.shape[0])*1
+            # score += 1
         return score, {}
     return _fn
 

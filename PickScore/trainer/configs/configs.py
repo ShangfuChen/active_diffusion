@@ -10,7 +10,7 @@ import trainer.criterions
 import trainer.datasetss
 import trainer.optimizers
 import trainer.lr_schedulers
-import trainer.ddpo_conf
+import trainer.dm_conf
 import trainer.query_conf
 from trainer.accelerators.base_accelerator import BaseAcceleratorConfig
 from trainer.models.base_model import BaseModelConfig
@@ -90,7 +90,8 @@ defaults = [
     {"optimizer": "adamw"},
     # {"lr_scheduler": "dummy"},
     {"lr_scheduler": "constant_with_warmup"},
-    {"ddpo_conf": "ddpo_train"},
+    {"dm_conf": "ddpo"},
+    # {"dm_conf": "rlcm"},
     {"query_conf" : "query_conf"},
 ]
 

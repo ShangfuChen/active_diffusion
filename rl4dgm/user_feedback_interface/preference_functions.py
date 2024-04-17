@@ -45,20 +45,20 @@ def PickScore(**kwargs):
     images = kwargs["images"]
     prompt = kwargs["prompt"]
     device = kwargs["device"]
-    # preprocess
+    # NOTE: processor doesn't need padding etc anymore. why?
     image_inputs = processor(
         images=images,
-        padding=True,
-        truncation=True,
-        max_length=77,
+        # padding=True,
+        # truncation=True,
+        # max_length=77,
         return_tensors="pt",
     ).to(device)
     
     text_inputs = processor(
         text=prompt,
-        padding=True,
-        truncation=True,
-        max_length=77,
+        # padding=True,
+        # truncation=True,
+        # max_length=77,
         return_tensors="pt",
     ).to(device)
     with torch.no_grad():

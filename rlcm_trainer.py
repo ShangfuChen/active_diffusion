@@ -1,0 +1,748 @@
+
+
+from collections import defaultdict
+import contextlib
+import sys
+import os
+import datetime
+from concurrent import futures
+import time
+from absl import app, flags
+from ml_collections import config_flags
+from accelerate import Accelerator
+from accelerate.utils import set_seed, ProjectConfiguration
+from accelerate.logging import get_logger
+from diffusers import DiffusionPipeline
+from diffusers import StableDiffusionPipeline, DDIMScheduler, UNet2DConditionModel
+from diffusers.loaders import AttnProcsLayers
+from diffusers.models.attention_processor import LoRAAttnProcessor
+import numpy as np
+import ddpo.prompts
+import ddpo.rewards
+# from ddpo.stat_tracking import PerPromptStatTracker
+# from ddpo.diffusers_patch.pipeline_with_logprob import pipeline_with_logprob
+# from ddpo.diffusers_patch.ddim_with_logprob import ddim_step_with_logprob
+from lcm_rl_pytorch.diffusers_patch.lcm_scheduler import LCMScheduler
+# from lcm_rl_pytorch.core.training_loop import training_loop
+# from lcm_rl_pytorch.core import dataloader
+from lcm_rl_pytorch.util.lora import cast_training_params
+from lcm_rl_pytorch.util.wandb_utils import log_images_to_wandb
+from lcm_rl_pytorch.util.model import get_model_prediction
+from lcm_rl_pytorch.util.stat_tracking import PerPromptStatTracker
+from peft import LoraConfig
+import torch
+import wandb
+import random
+from functools import partial
+import tqdm
+import tempfile
+from PIL import Image
+from transformers import AutoProcessor, AutoModel
+from PickScore.trainer.scripts.mystep_realtime import reward_model_setup, reward_train_step
+import torchvision
+
+from omegaconf import DictConfig, OmegaConf
+
+class RLCMTrainer:
+    def __init__(self, config : DictConfig, logger, accelerator=None):#, dummy_loader):
+        unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+        if not config.run_name:
+            config.run_name = unique_id
+        else:
+            config.run_name += "_" + unique_id
+
+        if config.resume_from:
+            config.resume_from = os.path.normpath(os.path.expanduser(config.resume_from))
+            if "checkpoint_" not in os.path.basename(config.resume_from):
+                # get the most recent checkpoint in this directory
+                checkpoints = list(
+                    filter(lambda x: "checkpoint_" in x, os.listdir(config.resume_from))
+                )
+                if len(checkpoints) == 0:
+                    raise ValueError(f"No checkpoints found in {config.resume_from}")
+                config.resume_from = os.path.join(
+                    config.resume_from,
+                    sorted(checkpoints, key=lambda x: int(x.split("_")[-1]))[-1],
+                )
+
+        # number of timesteps within each trajectory to train on
+        self.num_train_timesteps = int(config.sample_num_steps * config.train_timestep_fraction)
+
+        accelerator_config = ProjectConfiguration(
+            project_dir=os.path.join(config.logdir, config.run_name),
+            automatic_checkpoint_naming=True,
+            total_limit=config.num_checkpoint_limit,
+        )
+
+        os.environ["ACCELERATE_USE_DEEPSPEED"] = "false"
+        print("\nACCELERATE_USE_DEEPSPEED: ", os.environ.get("ACCELERATE_USE_DEEPSPEED"))
+        
+        # breakpoint()
+        if accelerator is None:
+            self.accelerator = Accelerator(
+                log_with="wandb",
+                mixed_precision=config.mixed_precision,
+                project_config=accelerator_config,
+                # we always accumulate gradients across timesteps; we want config.train_gradient_accumulation_steps to be the
+                # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
+                # the total number of optimizer steps to accumulate across.
+                gradient_accumulation_steps=config.train_gradient_accumulation_steps*config.sample_num_steps)
+        else:
+            self.accelerator = accelerator
+
+        if self.accelerator.is_main_process:
+            self.accelerator.init_trackers(
+                project_name="active-diffusion",
+                # config=config.to_dict(),
+                config=dict(config),
+                init_kwargs={"wandb": {"name": config.run_name}},
+            )
+        logger.info(f"\n{config}")
+
+        # set seed (device_specific is very important to get different prompts on different devices)
+        set_seed(config.seed, device_specific=True)
+
+        # load scheduler, tokenizer and models.
+        # pipeline = StableDiffusionPipeline.from_pretrained(
+            # config.pretrained_model, revision=config.pretrained_revision
+        # )
+        # NOTE: RLCM patch
+        # Changing diffusion model pipeline
+        pipeline = DiffusionPipeline.from_pretrained(
+            config.pretrained_model,
+            custom_pipeline="./lcm_rl_pytorch/diffusers_patch",
+        )
+        pipeline.scheduler = LCMScheduler()
+        pipeline.unet.requires_grad_(False)
+        pipeline.vae.requires_grad_(False)
+        pipeline.text_encoder.requires_grad_(False)
+        pipeline.to(torch_device=self.accelerator.device, torch_dtype=torch.float16)
+
+        # for all tasks but aesthetic, we use r=16, alpha =32. For aesthetic, we use r=8, alpha=8
+        unet_lora_config = LoraConfig(
+            r=config.lora_r,
+            lora_alpha=config.lora_alpha,
+            init_lora_weights="gaussian",
+            target_modules=["to_k", "to_q", "to_v", "to_out.0"],
+        )
+        pipeline.unet.add_adapter(unet_lora_config)
+
+        cast_training_params(pipeline.unet, torch.float32)
+
+        # disable safety checker
+        pipeline.safety_checker = None
+        # make the progress bar nicer
+        pipeline.set_progress_bar_config(
+            position=1,
+            disable=not self.accelerator.is_local_main_process,
+            leave=False,
+            desc="Timestep",
+            dynamic_ncols=True,
+        )
+        # For mixed precision training we cast all non-trainable weigths (vae, non-lora text_encoder and non-lora unet) to half-precision
+        # as these weights are only used for inference, keeping weights in full precision is not required.
+        inference_dtype = torch.float32
+        # if self.accelerator.mixed_precision == "fp16":
+            # inference_dtype = torch.float16
+        # elif self.accelerator.mixed_precision == "bf16":
+            # inference_dtype = torch.bfloat16
+
+        # Move unet, vae and text_encoder to device and cast to inference_dtype
+        pipeline.vae.to(self.accelerator.device, dtype=inference_dtype)
+        pipeline.text_encoder.to(self.accelerator.device, dtype=inference_dtype)
+        if config.use_lora:
+            pipeline.unet.to(self.accelerator.device, dtype=inference_dtype)
+        unet = pipeline.unet 
+        # NOTE: lora should be done by add_adapter
+        # if config.use_lora:
+            # # Set correct lora layers
+            # lora_attn_procs = {}
+            # for name in pipeline.unet.attn_processors.keys():
+                # cross_attention_dim = (
+                    # None
+                    # if name.endswith("attn1.processor")
+                    # else pipeline.unet.config.cross_attention_dim
+                # )
+                # if name.startswith("mid_block"):
+                    # hidden_size = pipeline.unet.config.block_out_channels[-1]
+                # elif name.startswith("up_blocks"):
+                    # block_id = int(name[len("up_blocks.")])
+                    # hidden_size = list(reversed(pipeline.unet.config.block_out_channels))[
+                        # block_id
+                    # ]
+                # elif name.startswith("down_blocks"):
+                    # block_id = int(name[len("down_blocks.")])
+                    # hidden_size = pipeline.unet.config.block_out_channels[block_id]
+
+                # lora_attn_procs[name] = LoRAAttnProcessor(
+                    # hidden_size=hidden_size, cross_attention_dim=cross_attention_dim
+                # )
+            # pipeline.unet.set_attn_processor(lora_attn_procs)
+
+            # # this is a hack to synchronize gradients properly. the module that registers the parameters we care about (in
+            # # this case, AttnProcsLayers) needs to also be used for the forward pass. AttnProcsLayers doesn't have a
+            # # `forward` method, so we wrap it to add one and capture the rest of the unet parameters using a closure.
+            # class _Wrapper(AttnProcsLayers):
+                # def forward(self, *args, **kwargs):
+                    # return pipeline.unet(*args, **kwargs)
+
+            # unet = _Wrapper(pipeline.unet.attn_processors)
+        # else:
+            # unet = pipeline.unet
+
+        self.pipeline = pipeline
+        self.logging_step = 0
+        self.stat_tracker = PerPromptStatTracker(
+            config.stat_buffer_size, config.stat_min_count
+        )
+        # set up diffusers-friendly checkpoint saving with Accelerate
+
+        def save_model_hook(models, weights, output_dir):
+            # TODO #
+            # simply close the assertion
+            # assert len(models) == 1
+            if config.use_lora and isinstance(models[0], AttnProcsLayers):
+                self.pipeline.unet.save_attn_procs(output_dir)
+            elif not config.use_lora and isinstance(models[0], UNet2DConditionModel):
+                models[0].save_pretrained(os.path.join(output_dir, "unet"))
+            else:
+                raise ValueError(f"Unknown model type {type(models[0])}")
+            weights.pop()  # ensures that accelerate doesn't try to handle saving of the model
+
+        def load_model_hook(models, input_dir):
+            assert len(models) == 1
+            if config.use_lora and isinstance(models[0], AttnProcsLayers):
+                # self.pipeline.unet.load_attn_procs(input_dir)
+                tmp_unet = UNet2DConditionModel.from_pretrained(
+                    config.pretrained.model,
+                    revision=config.pretrained.revision,
+                    subfolder="unet",
+                )
+                tmp_unet.load_attn_procs(input_dir)
+                models[0].load_state_dict(
+                    AttnProcsLayers(tmp_unet.attn_processors).state_dict()
+                )
+                del tmp_unet
+            elif not config.use_lora and isinstance(models[0], UNet2DConditionModel):
+                load_model = UNet2DConditionModel.from_pretrained(
+                    input_dir, subfolder="unet"
+                )
+                models[0].register_to_config(**load_model.config)
+                models[0].load_state_dict(load_model.state_dict())
+                del load_model
+            else:
+                raise ValueError(f"Unknown model type {type(models[0])}")
+            models.pop()  # ensures that accelerate doesn't try to handle loading of the model
+
+        self.accelerator.register_save_state_pre_hook(save_model_hook)
+        self.accelerator.register_load_state_pre_hook(load_model_hook)
+
+        # Enable TF32 for faster training on Ampere GPUs,
+        # cf https://pytorch.org/docs/stable/notes/cuda.html#tensorfloat-32-tf32-on-ampere-devices
+        # if config.allow_tf32:
+            # torch.backends.cuda.matmul.allow_tf32 = True
+
+        # # Initialize the optimizer
+        # if config.train_use_8bit_adam:
+            # try:
+                # import bitsandbytes as bnb
+            # except ImportError:
+                # raise ImportError(
+                    # "Please install bitsandbytes to use 8-bit Adam. You can do so by running `pip install bitsandbytes`"
+                # )
+
+            # optimizer_cls = bnb.optim.AdamW8bit
+        # else:
+            # optimizer_cls = torch.optim.AdamW
+
+        # optimizer = optimizer_cls(
+            # unet.parameters(),
+            # lr=config.train_learning_rate,
+            # betas=(config.train_adam_beta1, config.train_adam_beta2),
+            # weight_decay=config.train_adam_weight_decay,
+            # eps=config.train_adam_epsilon,
+        # )
+        optimizer = torch.optim.Adam(self.pipeline.unet.parameters(), lr=config.train_learning_rate)
+        # NOTE: total_iters used to be num_epoch*3
+        scheduler = torch.optim.lr_scheduler.LinearLR(optimizer, start_factor=1.0, end_factor=0.0, total_iters=90)
+        self.unet, self.optimizer = self.accelerator.prepare(unet, optimizer) 
+
+        # prepare prompt and reward fn
+        # Add a flag for using pickscore reward function
+        # Because the inputs are different
+        self.use_pickscore = (config.reward_fn == 'pickscore')
+        self.prompt_fn = getattr(ddpo.prompts, config.prompt_fn)
+        self.reward_fn = getattr(ddpo.rewards, config.reward_fn)()
+
+        # generate negative prompt embeddings
+        # NOTE: can define negative prompt here
+        neg_prompt_embed = self.pipeline.text_encoder(
+            self.pipeline.tokenizer(
+                [""],
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=self.pipeline.tokenizer.model_max_length,
+            ).input_ids.to(self.accelerator.device)
+        )[0]
+        self.sample_neg_prompt_embeds = neg_prompt_embed.repeat(config.sample_batch_size, 1, 1)
+        self.train_neg_prompt_embeds = neg_prompt_embed.repeat(config.train_batch_size, 1, 1)
+
+        # initialize stat tracker
+        if config.per_prompt_stat_tracking:
+            self.stat_tracker = PerPromptStatTracker(
+                config.per_prompt_stat_tracking_buffer_size,
+                config.per_prompt_stat_tracking_min_count,
+            )
+
+        # for some reason, autocast is necessary for non-lora training but for lora training it isn't necessary and it uses
+        # more memory
+        self.autocast = contextlib.nullcontext if config.use_lora else self.accelerator.autocast
+        # self.autocast = accelerator.autocast
+
+        # executor to perform callbacks asynchronously. this is beneficial for the llava callbacks which makes a request to a
+        # remote server running llava inference.
+        self.executor = futures.ThreadPoolExecutor(max_workers=4)
+
+        # sampling settings and sanity check
+        self.samples = {}
+        self.samples_per_epoch = (
+            config.sample_batch_size
+            * self.accelerator.num_processes
+            * config.sample_num_batches_per_epoch
+        )
+        self.total_train_batch_size = (
+            config.train_batch_size
+            * self.accelerator.num_processes
+            * config.train_gradient_accumulation_steps
+        )
+
+        assert config.sample_batch_size >= config.train_batch_size
+        assert config.sample_batch_size % config.train_batch_size == 0
+        assert self.samples_per_epoch % self.total_train_batch_size == 0
+
+        self.samples = []
+
+        # store config
+        self.config = config
+
+        if self.config.resume_from:
+            logger.info(f"Resuming from {self.config.resume_from}")
+            self.accelerator.load_state(self.config.resume_from)
+
+        self.global_step = 0
+
+        # set up tqdm
+        self.tqdm = partial(tqdm.tqdm, dynamic_ncols=True)
+
+
+    # NOTE: Remove reward_model and processor args because reward calculation
+    # is move to train()
+    def sample(self, logger, epoch, save_images=False, img_save_dir="sampled_images", high_reward_latents=None):
+        # TODO logger
+
+        self.pipeline.unet.eval()
+        self.samples = []
+        self.prompts = []
+        all_rewards = []
+        
+        for i in self.tqdm(
+            range(self.config.sample_num_batches_per_epoch),
+            desc=f"Epoch {epoch}: sampling", # TODO
+            disable=not self.accelerator.is_local_main_process,
+            position=0,
+        ):
+            # generate prompts
+            # original prompts function that sample a prompt at a time
+            prompts, prompt_metadata = zip(
+                *[
+                    self.prompt_fn()
+                    for _ in range(self.config.sample_batch_size)
+                ]
+            )
+
+            # for cute_animal only
+            # prompts = self.prompt_fn(self.config.sample_batch_size)
+
+            # encode prompts
+            # prompt_ids = self.pipeline.tokenizer(
+                # prompts,
+                # return_tensors="pt",
+                # padding="max_length",
+                # truncation=True,
+                # max_length=self.pipeline.tokenizer.model_max_length,
+            # ).input_ids.to(self.accelerator.device)
+            # prompt_embeds = self.pipeline.text_encoder(prompt_ids)[0]
+
+            # Add a small perturbation on the high reward latents
+            # if high_reward_latents is not None:
+                # condition_latents = torch.split(high_reward_latents, self.config.sample_batch_size)[i]
+                # condition_latents = 0.99995*condition_latents + 0.01*torch.randn(condition_latents.shape).to(self.accelerator.device).to(torch.float16)
+                # # condition_latents = None
+            # else:
+                # condition_latents = None
+ 
+            # sample
+            # with self.autocast():
+                # images, _, latents, log_probs = pipeline_with_logprob(
+                    # self.pipeline,
+                    # prompt_embeds=prompt_embeds,
+                    # negative_prompt_embeds=self.sample_neg_prompt_embeds,
+                    # num_inference_steps=self.config.sample_num_steps,
+                    # guidance_scale=self.config.sample_guidance_scale,
+                    # eta=self.config.sample_eta,
+                    # latents=condition_latents,
+                    # output_type="pt",
+                # )
+            sample_dict = self.pipeline(
+                prompt=list(prompts),
+                num_inference_steps=self.config.sample_num_steps,
+                guidance_scale=self.config.sample_guidance_scale,
+                lcm_origin_steps=self.config.lcm_origin_steps,
+                output_type="pt",
+            )
+            # obtain reward
+            rewards = self.executor.submit(
+                self.reward_fn,
+                sample_dict["images"],
+                prompts)
+
+            # add rewards to sample dict
+            sample_dict["rewards"] = rewards
+            sample_dict["encoded_prompts"] = self.pipeline.tokenizer(
+                list(prompts),
+                return_tensors="pt",
+                padding="max_length",
+                truncation=True,
+                max_length=self.config.max_prompt_length,
+            ).input_ids
+
+            last_images = sample_dict["images"]
+            self.samples.append(sample_dict)
+            self.prompts.append(prompts)
+
+        # =================== BATCHING (and Logging and advantage computation) ===================
+        for sample in self.tqdm(
+            self.samples,
+            desc="Waiting for rewards",
+            disable=not self.accelerator.is_local_main_process,
+            position=0,
+            ):
+                rewards, reward_metadata = sample["rewards"].result()
+                sample["rewards"] = torch.as_tensor(rewards, device=self.accelerator.device)
+                all_rewards.append(rewards.tolist())
+
+        # NOTE: should use next_states or states?
+        # Prepare for returns
+        samples = torch.cat([sample["images"] for sample in self.samples])
+        features = torch.cat([sample["next_states"] for sample in self.samples])
+
+        # create super batch
+        self.samples = {k: torch.cat([s[k] for s in self.samples]) for k in self.samples[0].keys()}
+        # return tensor of images
+        if not isinstance(self.samples["rewards"], torch.Tensor):
+            self.samples["rewards"] = torch.tensor(self.samples["rewards"])
+        gathered_rewards = self.accelerator.gather(self.samples["rewards"].to(self.accelerator.device)).cpu().numpy()
+        if not isinstance(self.samples["encoded_prompts"], torch.Tensor):
+            self.samples["encoded_prompts"] = torch.tensor(self.samples["encoded_prompts"])
+        prompt_ids = self.accelerator.gather(self.samples["encoded_prompts"].to(self.accelerator.device)).cpu().numpy()
+
+        log_images_to_wandb(
+            accelerator=self.accelerator,
+            prompts=prompts,
+            images=last_images,
+            rewards=rewards,
+            step=self.logging_step,
+        )
+
+        self.accelerator.log(
+            {
+                # "rewards": gathered_rewards,
+                "mean_reward": gathered_rewards.mean(),
+                "std_reward": gathered_rewards.std(),
+            },
+            # step=self.logging_step,
+        )
+        
+        # NOTE: to check, maybe prompts is redundant since we have self.prompts?
+        prompts = self.pipeline.tokenizer.batch_decode(
+            prompt_ids, skip_special_tokens=True
+        )
+        advantages = self.stat_tracker.update(prompts, gathered_rewards)
+
+        self.samples["advantages"] = (
+            torch.as_tensor(advantages)
+            .reshape(self.accelerator.num_processes, -1)[self.accelerator.process_index].to(self.accelerator.device)
+        )
+
+        del self.samples["rewards"]
+        del self.samples["encoded_prompts"]
+
+        self.total_batch_size, self.num_timesteps = self.samples["timesteps"].shape
+
+        perm = torch.randperm(self.total_batch_size)
+        self.samples = {k: v[perm] for k, v in self.samples.items()}
+        # shuffle along time dimension independently for each sample
+        perms = torch.stack(
+            [torch.randperm(self.num_timesteps) for _ in range(self.total_batch_size)]
+        )
+        for key in [
+            "timesteps",
+            "states",
+            "next_states",
+            "log_probs",
+            "time_index",
+        ]:
+            self.samples[key] = self.samples[key][
+                torch.arange(self.total_batch_size)[:, None],
+                perms,
+            ]
+
+        # rebatch for training
+        self.samples_batched = {
+            k: v.reshape(-1, self.config.train_batch_size, *v.shape[1:])
+            for k, v in self.samples.items()
+        }
+
+        # dict of lists -> list of dicts for easier iteration
+        self.samples_batched = [
+            dict(zip(self.samples_batched, x)) for x in zip(*self.samples_batched.values())
+        ]
+
+        if save_images and self.accelerator.is_main_process:
+            self.save_batch_to_images(image_batch=samples, epoch=epoch, save_dir=img_save_dir)
+
+        if not self.use_pickscore:
+            # if using frozen AI evaluator, return the image features and AI rewards along with the samples
+            return samples, features, self.prompts, all_rewards
+        else:
+            # if using trainable reward model (pickscore), rewards will be computed in the train loop after reward model has been updated
+            return samples, self.prompts
+        # import ipdb
+        # ipdb.set_trace()
+
+            # # if not isinstance(samples["rewards"], torch.Tensor):
+                # # samples["rewards"] = torch.tensor(samples["rewards"])
+            # # gathered_rewards = accelerator.gather(samples["rewards"].to(accelerator.device)).cpu().numpy()
+            # if cfg.wandb.log:
+                # log_images_to_wandb(
+                    # accelerator=accelerator,
+                    # prompts=prompts,
+                    # images=last_images,
+                    # rewards=rewards,
+                    # step=logging_step,
+                # )
+
+                # accelerator.log(
+                    # {
+                        # "rewards": gathered_rewards,
+                        # "mean_reward": gathered_rewards.mean(),
+                        # "std_reward": gathered_rewards.std(),
+                        # "epoch": epoch,
+                    # },
+                    # step=logging_step,
+                # )
+
+            # # compute advantages with per prompt stat tracking
+            # if not isinstance(samples["encoded_prompts"], torch.Tensor):
+                # samples["encoded_prompts"] = torch.tensor(samples["encoded_prompts"])
+            # prompt_ids = accelerator.gather(samples["encoded_prompts"].to(accelerator.device)).cpu().numpy()
+
+            # prompts = pipeline.tokenizer.batch_decode(
+                # prompt_ids, skip_special_tokens=True
+            # )
+            # advantages = stat_tracker.update(prompts, gathered_rewards)
+
+            # samples["advantages"] = (
+                # torch.as_tensor(advantages)
+                # .reshape(accelerator.num_processes, -1)[accelerator.process_index].to(accelerator.device)
+            # )
+
+
+            # del samples["rewards"]
+            # del samples["encoded_prompts"]
+
+            # total_batch_size, num_timesteps = samples["timesteps"].shape
+
+            # perm = torch.randperm(total_batch_size)
+            # samples = {k: v[perm] for k, v in samples.items()}
+            # # shuffle along time dimension independently for each sample
+            # perms = torch.stack(
+                # [torch.randperm(num_timesteps) for _ in range(total_batch_size)]
+            # )
+            # for key in [
+                # "timesteps",
+                # "states",
+                # "next_states",
+                # "log_probs",
+                # "time_index",
+            # ]:
+                # samples[key] = samples[key][
+                    # torch.arange(total_batch_size)[:, None],
+                    # perms,
+                # ]
+
+            # # rebatch for training
+            # samples_batched = {
+                # k: v.reshape(-1, training_config.train_batch_size_per_gpu, *v.shape[1:])
+                # for k, v in samples.items()
+            # }
+
+            # # dict of lists -> list of dicts for easier iteration
+            # samples_batched = [
+                # dict(zip(samples_batched, x)) for x in zip(*samples_batched.values())
+            # ]
+            # import ipdb
+            # ipdb.set_trace()
+
+            # ####################################
+
+            # latents = torch.stack(
+                # latents, dim=1
+            # )  # (batch_size, num_steps + 1, 4, 64, 64)
+            # log_probs = torch.stack(log_probs, dim=1)  # (batch_size, num_steps, 1)
+            # timesteps = self.pipeline.scheduler.timesteps.repeat(
+                # self.config.sample_batch_size, 1
+            # )  # (batch_size, num_steps)
+
+            # # store the list form to self.samples
+            # self.samples.append(
+                # {
+                    # "prompt_ids": prompt_ids,
+                    # "prompt_embeds": prompt_embeds,
+                    # "timesteps": timesteps,
+                    # "latents": latents[
+                        # :, :-1
+                    # ],  # each entry is the latent before timestep t
+                    # "next_latents": latents[
+                        # :, 1:
+                    # ],  # each entry is the latent after timestep t
+                    # "log_probs": log_probs,
+                    # "images": images,
+                    # "rewards" : rewards,
+                # }
+            # )
+            # self.prompts.append(prompts)
+
+    
+    def train_from_reward_labels(self, raw_rewards, logger, epoch):
+        """
+        Takes raw reward values as input rather than computing with a reward model
+        Args:
+            raw_rewards () : 
+        """
+        self.pipeline.unet.train()
+        info = defaultdict(list)
+
+        # compute w_embedding
+        # get w_embedding
+        w = torch.tensor(self.config.sample_guidance_scale-1).repeat(
+            self.config.train_batch_size
+        )
+        w_embedding = self.pipeline.get_guidance_scale_embedding(w, embedding_dim=256).to(
+            self.accelerator.device
+        )
+
+        for k in range(self.config.train_num_inner_epochs):
+            # shuffle samples_batched
+            random.shuffle(self.samples_batched)
+            for i, sample in self.tqdm(
+                enumerate(self.samples_batched),
+                desc=f"Training, {epoch}.{iter}",
+                disable=not self.accelerator.is_local_main_process,
+            ):
+                # for j in self.tqdm(
+                    # range(self.num_timesteps),
+                    # desc="Timestep",
+                    # disable=not self.accelerator.is_local_main_process,
+                # ):
+                for j in range(self.num_timesteps):
+                    with self.accelerator.accumulate(self.pipeline.unet):
+                        model_prediction = get_model_prediction(
+                            pipeline=self.pipeline,
+                            latents=sample["states"][:, j],
+                            timesteps=sample["timesteps"][:, j],
+                            prompt_embeds=sample["prompt_embeds"],
+                            w_embedding=w_embedding,
+                        )
+
+                        # compute log prob of next_latents given latents under current model
+                        lps = []
+                        for k in range(self.config.train_batch_size):
+                            _, _, lp = self.pipeline.scheduler.step(
+                                model_output=model_prediction[k].unsqueeze(0),
+                                step_index=sample["time_index"][:, j][k],
+                                timestep=sample["timesteps"][:, j][k],
+                                sample=sample["states"][:, j][k].unsqueeze(0),
+                                prev_sample=sample["next_states"][:, j][k].unsqueeze(0),
+                                return_dict=False,
+                            )
+                            lps.append(lp)
+
+                        log_prob = torch.cat(lps)
+
+                        advantages = torch.clamp(
+                            sample["advantages"],
+                            -self.config.train_adv_clip_max,
+                            self.config.train_adv_clip_max,
+                        )
+                        ratio = torch.exp(log_prob - sample["log_probs"][:, j])
+                        unclipped_loss = -advantages * ratio
+                        clipped_loss = -advantages * torch.clamp(
+                            ratio,
+                            1.0 - self.config.train_clip_range,
+                            1.0 + self.config.train_clip_range,
+                        )
+                        loss = torch.mean(torch.maximum(unclipped_loss, clipped_loss))
+
+                        # debugging values
+                        # John Schulman says that (ratio - 1) - log(ratio) is a better
+                        # estimator, but most existing code uses this so...
+                        # http://joschu.net/blog/kl-approx.html
+                        info["approx_kl"].append(
+                            0.5
+                            * torch.mean((log_prob - sample["log_probs"][:, j]) ** 2)
+                        )
+                        info["clipfrac"].append(
+                            torch.mean(
+                                (
+                                    torch.abs(ratio - 1.0) > self.config.train_clip_range
+                                ).float()
+                            )
+                        )
+                        # info["adv_mean"].append(advantages_mean)
+                        info["ratio"].append(torch.mean(ratio))
+                        info["loss"].append(loss)
+
+                        # backward pass
+                        self.accelerator.backward(loss)
+                        if self.accelerator.sync_gradients:
+                            self.accelerator.clip_grad_norm_(
+                                self.pipeline.unet.parameters(), self.config.train_max_grad_norm
+                            )
+                        self.optimizer.step()
+                        self.optimizer.zero_grad()
+
+                    if self.accelerator.sync_gradients:
+                        assert (j == self.num_timesteps - 1)
+                        assert (i + 1
+                        ) % self.config.train_gradient_accumulation_steps == 0
+                        # log training-related stuff
+                        info = {k: torch.mean(torch.stack(v)) for k, v in info.items()}
+                        info = self.accelerator.reduce(info, reduction="mean")
+                        # self.accelerator.log(info, step=self.logging_step)
+                        self.accelerator.log(info)
+                        self.logging_step += 1
+                        info = defaultdict(list)
+        # TODO #
+        # Does not support model saving now
+        # if epoch != 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
+            # self.accelerator.save_state()
+
+    def save_batch_to_images(self, image_batch, epoch, save_dir):
+        save_folder = os.path.join(save_dir, f"epoch{epoch}")
+        print(f"saving images to {save_folder}")
+        os.mkdir(save_folder)
+        for i, im in enumerate(image_batch):
+            pil_im = torchvision.transforms.functional.to_pil_image(im)
+            pil_im.save(os.path.join(save_folder, f"{i}.jpg"))
