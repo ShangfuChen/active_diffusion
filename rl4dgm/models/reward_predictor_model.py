@@ -10,6 +10,8 @@ class RewardPredictorModel(nn.Module):
             device=None,
         ):
 
+        super(RewardPredictorModel, self).__init__()
+
         if device is None:
             if torch.cuda.is_available():
                 device = "cuda"
@@ -20,6 +22,7 @@ class RewardPredictorModel(nn.Module):
         layers += [nn.Linear(hidden_dim, hidden_dim)] * n_hidden_layers
         layers += [nn.Linear(hidden_dim, 1)]
         self.model = nn.Sequential(*layers).to(device)
+        self.float()
 
     def forward(self, x):
         latents = self.model(x)

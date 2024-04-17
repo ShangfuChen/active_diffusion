@@ -464,7 +464,7 @@ def run_ai_feedback_correction_test(
     print("(mean, stdev) for errors")
     breakpoint()
     print(f"Normalized Human-AI(raw): ({np.array(normalized_ai_feedback_errors).mean()}, {np.std(np.array(normalized_ai_feedback_errors))})")
-    print(f"Normalized Human-AI(corrected): ({np.array(normalized_corrected_ai_feedback_errors.mean())}, {np.std(np.array(normalized_corrected_ai_feedback_errors))})")
+    print(f"Normalized Human-AI(corrected): ({np.array(normalized_corrected_ai_feedback_errors).mean()}, {np.std(np.array(normalized_corrected_ai_feedback_errors))})")
 
 
 def main(args):

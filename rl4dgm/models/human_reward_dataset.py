@@ -8,10 +8,12 @@ class HumanRewardDataset(Dataset):
         features,
         human_rewards,
         ai_rewards,
+        device,
     ):
-        self.features = features
-        self.human_rewards = human_rewards
-        self.ai_rewards = ai_rewards
+        super(HumanRewardDataset, self).__init__()
+        self.features = features.float().to(device)
+        self.human_rewards = human_rewards.float().to(device)
+        self.ai_rewards = ai_rewards.float().to(device)
 
     def __len__(self):
         return self.features.shape[0]
