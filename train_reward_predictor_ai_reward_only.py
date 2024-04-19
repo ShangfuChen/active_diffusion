@@ -19,36 +19,36 @@ import datetime
 import pandas as pd
 
 from rl4dgm.models.reward_predictor_model import RewardPredictorModel, RewardPredictorModel2
-from rl4dgm.models.human_reward_dataset import HumanRewardDataset
+from rl4dgm.models.human_reward_dataset import HumanRewardDatasetNoImage
 
 
-def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,):
-    assert sum([input_dir is not None, image_paths is not None]) == 1, "Either input_dir or image_paths should be provided (but not both)"
-    if input_dir is not None:
-        image_paths = [] # image paths
-        images = [] # image tensors
-        for epoch in os.listdir(input_dir):
-            # print("storing images for epoch", epoch)
-            n_saved_images = 0
-            for img in os.listdir(os.path.join(input_dir, epoch)):
-                if max_images_per_epoch is not None and n_saved_images >= max_images_per_epoch:
-                    break
-                filepath = os.path.join(input_dir, epoch, img)
-                image_paths.append(filepath)
-                images.append(torchvision.io.read_image(filepath))
-                n_saved_images += 1
-    else:
-        images = []
-        for filepath in image_paths:
-            n_saved_images = 0
-            if max_images_per_epoch is not None and n_saved_images >= max_images_per_epoch:
-                break
-            images.append(torchvision.io.read_image(filepath))
-            n_saved_images += 1
+# def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,):
+#     assert sum([input_dir is not None, image_paths is not None]) == 1, "Either input_dir or image_paths should be provided (but not both)"
+#     if input_dir is not None:
+#         image_paths = [] # image paths
+#         images = [] # image tensors
+#         for epoch in os.listdir(input_dir):
+#             # print("storing images for epoch", epoch)
+#             n_saved_images = 0
+#             for img in os.listdir(os.path.join(input_dir, epoch)):
+#                 if max_images_per_epoch is not None and n_saved_images >= max_images_per_epoch:
+#                     break
+#                 filepath = os.path.join(input_dir, epoch, img)
+#                 image_paths.append(filepath)
+#                 images.append(torchvision.io.read_image(filepath))
+#                 n_saved_images += 1
+#     else:
+#         images = []
+#         for filepath in image_paths:
+#             n_saved_images = 0
+#             if max_images_per_epoch is not None and n_saved_images >= max_images_per_epoch:
+#                 break
+#             images.append(torchvision.io.read_image(filepath))
+#             n_saved_images += 1
     
-    return torch.stack(images)
+#     return torch.stack(images)
 
-def get_datasets(features, human_rewards, ai_rewards, n_samples_per_epoch, train_ratio, batch_size, device):
+def get_datasets(human_rewards, ai_rewards, n_samples_per_epoch, train_ratio, batch_size, device):
     """
     Create train and test datasets
     Args:
@@ -59,8 +59,8 @@ def get_datasets(features, human_rewards, ai_rewards, n_samples_per_epoch, train
         train_ratio (float) : ratio of data to use as train data
         batch_size (int) : batch size for dataloaders
     """
-    assert features.shape[0] % n_samples_per_epoch == 0, "number of features is not a multiple of n_samples_per_epoch"
-    n_epochs = int(features.shape[0] / n_samples_per_epoch)
+    assert human_rewards.shape[0] % n_samples_per_epoch == 0, "number of human_rewards is not a multiple of n_samples_per_epoch"
+    n_epochs = int(human_rewards.shape[0] / n_samples_per_epoch)
     n_train_per_epoch = int(n_samples_per_epoch * train_ratio)
     indices = np.arange(n_samples_per_epoch)
     random.shuffle(indices)
@@ -72,33 +72,30 @@ def get_datasets(features, human_rewards, ai_rewards, n_samples_per_epoch, train
         train_indices += (train_indices_per_epoch + i * n_samples_per_epoch).tolist() 
         test_indices += (test_indices_per_epoch + i * n_samples_per_epoch).tolist() 
 
-    train_features = features[train_indices]
-    test_features = features[test_indices]
     train_human_rewards = torch.tensor(human_rewards[train_indices].values)
     test_human_rewards = torch.tensor(human_rewards[test_indices].values)
+    train_ai_rewards = torch.tensor(ai_rewards[train_indices].values)
+    test_ai_rewards = torch.tensor(ai_rewards[test_indices].values)
 
     print("Split into train and test")
     print("Initializing train set")
-    trainset = HumanRewardDataset(
-        features=train_features, 
+    trainset = HumanRewardDatasetNoImage(
         human_rewards=train_human_rewards, 
-        ai_rewards=torch.tensor(ai_rewards[train_indices].values),
-        device=device,
-    )
-    print("Initializing test set")
-    testset = HumanRewardDataset(
-        features=test_features,
-        human_rewards=test_human_rewards, 
-        ai_rewards=torch.tensor(ai_rewards[test_indices].values),
+        ai_rewards=train_ai_rewards,
         device=device,
     )
 
     print("Initializing DataLoaders")
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-    testloader = DataLoader(testset, batch_size=batch_size, shuffle=True)
-    return trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards
 
-def train(model, trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards, n_epochs=100, lr=0.001):
+    return trainloader, train_human_rewards, test_human_rewards, train_ai_rewards, test_ai_rewards
+
+def train(
+        model, trainloader, 
+        train_human_rewards, test_human_rewards, 
+        train_ai_rewards, test_ai_rewards, 
+        n_epochs=100, lr=0.001
+    ):
     
     # initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -112,14 +109,11 @@ def train(model, trainloader, testloader, train_features, test_features, train_h
         ###############################################################################
         # Train
         ###############################################################################
-        for step, (features, human_rewards, ai_rewards) in enumerate(trainloader):
+        for step, (human_rewards, ai_rewards) in enumerate(trainloader):
+            ai_rewards = ai_rewards[:,None].float()
             optimizer.zero_grad()
-            # TODO - currently only feeding feature in. should be using ai feedback as well
-            predictions = torch.flatten(model(features))
-            # print("predictions", predictions)
-            # print("ground truth", human_rewards)
+            predictions = torch.flatten(model(ai_rewards))
             loss = criterion(predictions, human_rewards)
-            # print("loss", loss.item())
             loss.backward()
             optimizer.step()
             running_losses.append(loss.item())
@@ -137,8 +131,8 @@ def train(model, trainloader, testloader, train_features, test_features, train_h
         # Test
         ###############################################################################
         with torch.no_grad():
-            train_outputs = torch.flatten(model(train_features).cpu())
-            test_outputs = torch.flatten(model(test_features).cpu())
+            train_outputs = torch.flatten(model(train_ai_rewards[:,None].float()).cpu())
+            test_outputs = torch.flatten(model(test_ai_rewards[:,None].float()).cpu())
             train_labels = train_human_rewards.cpu()
             test_labels = test_human_rewards.cpu()
 
@@ -170,57 +164,13 @@ def main(args):
     # set seed
     torch.manual_seed(0)
 
-    # extract images
-    images = extract_images(input_dir=args.img_dir)
-
     # get labels
     df = pd.read_pickle(args.datafile)
     human_rewards = df["human_rewards"]
     ai_rewards = df["ai_rewards"]
 
-    # set up feature extraction function
-    pretrained_model_path = "runwayml/stable-diffusion-v1-5"
-    pretrained_revision = "main"
-    pipeline = StableDiffusionPipeline.from_pretrained(
-        pretrained_model_path, 
-        revision=pretrained_revision
-    ).to(args.device)
-
-    pipeline.vae.requires_grad_(False)
-    pipeline.text_encoder.requires_grad_(False)
-    pipeline.unet.requires_grad_(False)
-    pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
-    featurizer_fn = pipeline.vae.encoder
-
-    # get image features in increments
-    # features = featurizer_fn(images.float().to(args.device)).cpu()
-    max_n_imgs = 32
-    n_batches = math.ceil(images.shape[0] / max_n_imgs)
-    print("Extracting features...")
-    features = []
-    for i in range(n_batches):
-        print(f"{i+1} / {n_batches}")
-        start_idx = i * max_n_imgs
-        end_idx = images.shape[0] if i == n_batches - 1 else start_idx + max_n_imgs
-        features.append(featurizer_fn(images[start_idx:end_idx].float().to(args.device)).cpu())
-    features = torch.cat(features)
-    print("...done")
-    # flatten features and get shape (input_dim for reward prediction model)
-    features = torch.flatten(features, start_dim=1)
-    feature_shape = features.shape
-    print("Flattened features to shape", feature_shape)
-
-    if args.use_ai_feedback:
-        # expand ai feedback to same dimension as feature and concatenate
-        expanded_ai_feedback = torch.ones(args.ai_feedback_dim).unsqueeze(0).expand(feature_shape[0], -1)
-        features = torch.cat([features, expanded_ai_feedback], dim=1)
-        feature_shape = features.shape
-        print(f"Concatenated AI feedback (dim={args.ai_feedback_dim})")
-        print("New feature shape is ", feature_shape)
-
     # setup datasets
-    trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards = get_datasets(
-        features=features,
+    trainloader, train_human_rewards, test_human_rewards, train_ai_rewards, test_ai_rewards = get_datasets(
         human_rewards=human_rewards,
         ai_rewards=ai_rewards,
         n_samples_per_epoch=args.n_samples_per_epoch,
@@ -230,48 +180,31 @@ def main(args):
     )
     print("initialized dataloaders")
 
-    # setup reward prediction model to train
-    # model = RewardPredictorModel(
-    #     input_dim=feature_shape[1], 
-    #     hidden_dim=args.hidden_dim,
-    #     n_hidden_layers=args.n_hidden_layers,
-    #     device=args.device,
-    # )
-
-    model = RewardPredictorModel(
-        input_dim=feature_shape[1], 
+    # setup reward prediction model
+    model = RewardPredictorModel2(
+        input_dim=1, 
         hidden_dims=args.hidden_dims,
         n_hidden_layers=args.n_hidden_layers,
         device=args.device,
     )
-
-    # model = RewardPredictorModel2(
-    #     input_dim=feature_shape[1], 
-    #     hidden_dims=args.hidden_dims,
-    #     n_hidden_layers=args.n_hidden_layers,
-    #     device=args.device,
-    # )
     print("initialized model")
 
     # setup wandb for logging
-    ai_feedback_dim = str(args.ai_feedback_dim) if args.use_ai_feedback else "none"
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"ai_dim{ai_feedback_dim}_hidden_dims{args.hidden_dims}_"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
+        name=args.experiment+f"hidden_dim{args.hidden_dims}_"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
         project="reward_predictor_training",
         entity="misoshiruseijin",
         config={
-            "input_dim" : feature_shape[1],
-            "hidden_dims" : args.hidden_dims,
+            "input_dim" : 1,
+            "hidden_dim" : args.hidden_dims,
             "n_hidden_layers" : args.n_hidden_layers,
             "lr" : args.lr,
             "datafile" : args.datafile,
             "train_ratio" : args.train_ratio,
             "n_epochs" : args.n_epochs,
             "batch_size" : args.batch_size,
-            "use_ai_feedback" : args.use_ai_feedback,
-            "ai_feedback_dim" : args.ai_feedback_dim,
-            "feature_shape" : feature_shape,
+            "feature_shape" : 1,
         }
     )
 
@@ -279,11 +212,10 @@ def main(args):
     train(
         model=model,
         trainloader=trainloader, 
-        testloader=testloader, 
-        train_features=train_features.to(args.device), 
-        test_features=test_features.to(args.device), 
         train_human_rewards=train_human_rewards.to(args.device),
         test_human_rewards=test_human_rewards.to(args.device),
+        train_ai_rewards=train_ai_rewards.to(args.device),
+        test_ai_rewards=test_ai_rewards.to(args.device),
         n_epochs=args.n_epochs,
         lr=args.lr,
     )
@@ -291,7 +223,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--img-dir", type=str, default="/home/ayanoh/all_aesthetic")
+    # parser.add_argument("--img-dir", type=str, default="/home/ayanoh/all_aesthetic")
     parser.add_argument("--datafile", type=str, default="/home/ayanoh/all_aesthetic.pkl")
     parser.add_argument("--save-dir", type=str, default="/home/ayanoh/reward_model_training_results")
     parser.add_argument("--device", type=str, default="cuda")
@@ -300,10 +232,8 @@ if __name__ == "__main__":
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--n-epochs", type=int, default=50)
     parser.add_argument("--lr", type=float, default=1e-8)
-    parser.add_argument("--hidden-dims", nargs="*", type=int, default=[22000]*6)
-    parser.add_argument("--n-hidden-layers", type=int, default=5)
-    parser.add_argument("--use-ai-feedback", action="store_true")
-    parser.add_argument("--ai-feedback-dim", type=int, default=2048)
+    parser.add_argument("--hidden-dims", nargs="*", type=int, default=[64, 64, 64])
+    parser.add_argument("--n-hidden-layers", type=int, default=2)
     parser.add_argument("--experiment", type=str, default="")
 
     args = parser.parse_args()

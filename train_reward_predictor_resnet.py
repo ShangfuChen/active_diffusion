@@ -8,6 +8,7 @@ import numpy as np
 import torch 
 from torch import nn
 import torchvision
+from torchvision import transforms
 from torch import optim
 from torch.utils.data import DataLoader, Dataset
 
@@ -17,6 +18,7 @@ import argparse
 import wandb
 import datetime
 import pandas as pd
+from PIL import Image
 
 from rl4dgm.models.reward_predictor_model import RewardPredictorModel, RewardPredictorModel2
 from rl4dgm.models.human_reward_dataset import HumanRewardDataset
@@ -35,7 +37,8 @@ def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,)
                     break
                 filepath = os.path.join(input_dir, epoch, img)
                 image_paths.append(filepath)
-                images.append(torchvision.io.read_image(filepath))
+                # images.append(torchvision.io.read_image(filepath))
+                images.append(Image.open(filepath))
                 n_saved_images += 1
     else:
         images = []
@@ -43,10 +46,12 @@ def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,)
             n_saved_images = 0
             if max_images_per_epoch is not None and n_saved_images >= max_images_per_epoch:
                 break
-            images.append(torchvision.io.read_image(filepath))
+            # images.append(torchvision.io.read_image(filepath))
+            images.append(Image.open(filepath))
             n_saved_images += 1
     
-    return torch.stack(images)
+    return images
+    # return torch.stack(images)
 
 def get_datasets(features, human_rewards, ai_rewards, n_samples_per_epoch, train_ratio, batch_size, device):
     """
@@ -172,55 +177,28 @@ def main(args):
 
     # extract images
     images = extract_images(input_dir=args.img_dir)
+    print("extracted images")
+
+    # process images for ResNet input
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    processed_images = [preprocess(image) for image in images]
+    processed_images = torch.stack(processed_images).to(args.device)
+    feature_shape = processed_images.shape[1:]
+    print("preprocessed features")
 
     # get labels
     df = pd.read_pickle(args.datafile)
     human_rewards = df["human_rewards"]
     ai_rewards = df["ai_rewards"]
 
-    # set up feature extraction function
-    pretrained_model_path = "runwayml/stable-diffusion-v1-5"
-    pretrained_revision = "main"
-    pipeline = StableDiffusionPipeline.from_pretrained(
-        pretrained_model_path, 
-        revision=pretrained_revision
-    ).to(args.device)
-
-    pipeline.vae.requires_grad_(False)
-    pipeline.text_encoder.requires_grad_(False)
-    pipeline.unet.requires_grad_(False)
-    pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
-    featurizer_fn = pipeline.vae.encoder
-
-    # get image features in increments
-    # features = featurizer_fn(images.float().to(args.device)).cpu()
-    max_n_imgs = 32
-    n_batches = math.ceil(images.shape[0] / max_n_imgs)
-    print("Extracting features...")
-    features = []
-    for i in range(n_batches):
-        print(f"{i+1} / {n_batches}")
-        start_idx = i * max_n_imgs
-        end_idx = images.shape[0] if i == n_batches - 1 else start_idx + max_n_imgs
-        features.append(featurizer_fn(images[start_idx:end_idx].float().to(args.device)).cpu())
-    features = torch.cat(features)
-    print("...done")
-    # flatten features and get shape (input_dim for reward prediction model)
-    features = torch.flatten(features, start_dim=1)
-    feature_shape = features.shape
-    print("Flattened features to shape", feature_shape)
-
-    if args.use_ai_feedback:
-        # expand ai feedback to same dimension as feature and concatenate
-        expanded_ai_feedback = torch.ones(args.ai_feedback_dim).unsqueeze(0).expand(feature_shape[0], -1)
-        features = torch.cat([features, expanded_ai_feedback], dim=1)
-        feature_shape = features.shape
-        print(f"Concatenated AI feedback (dim={args.ai_feedback_dim})")
-        print("New feature shape is ", feature_shape)
-
     # setup datasets
     trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards = get_datasets(
-        features=features,
+        features=processed_images,
         human_rewards=human_rewards,
         ai_rewards=ai_rewards,
         n_samples_per_epoch=args.n_samples_per_epoch,
@@ -230,34 +208,18 @@ def main(args):
     )
     print("initialized dataloaders")
 
-    # setup reward prediction model to train
-    # model = RewardPredictorModel(
-    #     input_dim=feature_shape[1], 
-    #     hidden_dim=args.hidden_dim,
-    #     n_hidden_layers=args.n_hidden_layers,
-    #     device=args.device,
-    # )
 
-    model = RewardPredictorModel(
-        input_dim=feature_shape[1], 
-        hidden_dims=args.hidden_dims,
-        n_hidden_layers=args.n_hidden_layers,
-        device=args.device,
-    )
-
-    # model = RewardPredictorModel2(
-    #     input_dim=feature_shape[1], 
-    #     hidden_dims=args.hidden_dims,
-    #     n_hidden_layers=args.n_hidden_layers,
-    #     device=args.device,
-    # )
-    print("initialized model")
+    # setup resnet model
+    model = torch.hub.load('pytorch/vision:v0.10.0', 'resnet18', pretrained=True)
+    # change the last fc layer dimension to output a single score
+    model.fc = torch.nn.Linear(model.fc.in_features, 1)
+    model = model.to(args.device)
 
     # setup wandb for logging
-    ai_feedback_dim = str(args.ai_feedback_dim) if args.use_ai_feedback else "none"
+    # ai_feedback_dim = str(args.ai_feedback_dim) if args.use_ai_feedback else "none"
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"ai_dim{ai_feedback_dim}_hidden_dims{args.hidden_dims}_"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
+        name=args.experiment+f"resnet"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
         project="reward_predictor_training",
         entity="misoshiruseijin",
         config={
@@ -298,8 +260,8 @@ if __name__ == "__main__":
     parser.add_argument("--n-samples-per-epoch", type=int, default=256)
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--n-epochs", type=int, default=50)
-    parser.add_argument("--lr", type=float, default=1e-8)
+    parser.add_argument("--n-epochs", type=int, default=1000)
+    parser.add_argument("--lr", type=float, default=1e-5)
     parser.add_argument("--hidden-dims", nargs="*", type=int, default=[22000]*6)
     parser.add_argument("--n-hidden-layers", type=int, default=5)
     parser.add_argument("--use-ai-feedback", action="store_true")

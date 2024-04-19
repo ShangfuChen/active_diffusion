@@ -20,3 +20,23 @@ class HumanRewardDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.features[idx], self.human_rewards[idx], self.ai_rewards[idx]
+    
+
+class HumanRewardDatasetNoImage(Dataset):
+    def __init__(
+        self,
+        human_rewards,
+        ai_rewards,
+        device,
+    ):
+        super(HumanRewardDatasetNoImage, self).__init__()
+        self.human_rewards = human_rewards.float().to(device)
+        self.ai_rewards = ai_rewards.float().to(device)
+
+    def __len__(self):
+        return self.human_rewards.shape[0]
+    
+    def __getitem__(self, idx):
+        return self.human_rewards[idx], self.ai_rewards[idx]
+    
+
