@@ -19,7 +19,7 @@ import datetime
 import pandas as pd
 
 from rl4dgm.models.reward_predictor_model import RewardPredictorModel, RewardPredictorModel2
-from rl4dgm.models.human_reward_dataset import HumanRewardDataset
+from active_diffusion.rl4dgm.models.mydatasets import HumanRewardDataset
 
 
 def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,):
