@@ -122,7 +122,7 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001):
             positive_out = model(positive_features)
             negative_out = model(negative_features)
 
-            loss = criterion(x=anchor_out, positive=positive_out, negative=negative_out)
+            loss = criterion(anchor_out, positive_out, negative_out)
             # print("loss", loss.item())
             loss.backward()
             optimizer.step()
@@ -177,10 +177,54 @@ def main(args):
     # set seed
     torch.manual_seed(0)
 
-    # extract images
-    images = extract_images(input_dir=args.img_dir)
-    images = torch.stack(images)
-    print("extracted images")
+
+
+    if not os.path.exists(args.featurefile):
+        # extract images
+        images = extract_images(input_dir=args.img_dir)
+        images = torch.stack(images)
+        print("extracted images")
+        
+        # set up feature extraction function
+        pretrained_model_path = "runwayml/stable-diffusion-v1-5"
+        pretrained_revision = "main"
+        pipeline = StableDiffusionPipeline.from_pretrained(
+            pretrained_model_path, 
+            revision=pretrained_revision
+        ).to(args.device)
+
+        pipeline.vae.requires_grad_(False)
+        pipeline.text_encoder.requires_grad_(False)
+        pipeline.unet.requires_grad_(False)
+        pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+        featurizer_fn = pipeline.vae.encoder
+
+        # get image features in increments
+        # features = featurizer_fn(images.float().to(args.device)).cpu()
+        max_n_imgs = 32
+        n_batches = math.ceil(images.shape[0] / max_n_imgs)
+        print("Extracting features...")
+        features = []
+        for i in range(n_batches):
+            print(f"{i+1} / {n_batches}")
+            start_idx = i * max_n_imgs
+            end_idx = images.shape[0] if i == n_batches - 1 else start_idx + max_n_imgs
+            features.append(featurizer_fn(images[start_idx:end_idx].float().to(args.device)).cpu())
+        features = torch.cat(features)
+        print("...done")
+        torch.save(features, args.featurefile)
+
+        # flatten features and get shape (input_dim for reward prediction model)
+        # features = torch.flatten(features, start_dim=1)
+    
+    else:
+        print("loaded features")
+        features = torch.load(args.featurefile)
+    
+    features = torch.flatten(features, start_dim=1)
+    feature_shape = features.shape
+    print("Flattened features to shape", feature_shape)
+    # breakpoint()
 
     # get labels
     df = pd.read_pickle(args.datafile)
@@ -189,7 +233,7 @@ def main(args):
 
     # setup datasets
     trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards = get_datasets(
-        features=images,
+        features=features,
         scores=ai_rewards,
         n_samples_per_epoch=args.n_samples_per_epoch,
         train_ratio=args.train_ratio,
@@ -200,7 +244,6 @@ def main(args):
 
     # setup model
     # flatten the features if using linear model
-    features = torch.flatten(images, start_dim=1)
     model = LinearModel(
         input_dim=features.shape[1],
         hidden_dims=args.hidden_dims,
@@ -235,10 +278,6 @@ def main(args):
         model=model,
         trainloader=trainloader, 
         testloader=testloader, 
-        train_features=train_features.to(args.device), 
-        test_features=test_features.to(args.device), 
-        train_human_rewards=train_human_rewards.to(args.device),
-        test_human_rewards=test_human_rewards.to(args.device),
         n_epochs=args.n_epochs,
         lr=args.lr,
     )
@@ -246,7 +285,7 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--img-dir", type=str, default="/home/ayanoh/all_aesthetic_small")
+    parser.add_argument("--img-dir", type=str, default="/home/ayanoh/all_aesthetic")
     parser.add_argument("--datafile", type=str, default="/home/ayanoh/all_aesthetic.pkl")
     parser.add_argument("--save-dir", type=str, default="/home/ayanoh/reward_model_training_results")
     parser.add_argument("--device", type=str, default="cuda")
@@ -259,6 +298,7 @@ if __name__ == "__main__":
     parser.add_argument("--n-hidden-layers", type=int, default=5)
     parser.add_argument("--output-dim", type=int, default=4096)
     parser.add_argument("--experiment", type=str, default="")
+    parser.add_argument("--featurefile", type=str, default="/home/ayanoh/all_aesthetic_feature.pt")
 
     args = parser.parse_args()
     main(args)

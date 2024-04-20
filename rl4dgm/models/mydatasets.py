@@ -21,7 +21,7 @@ class TripletDataset(Dataset):
         return self.features.shape[0]
     
     def __getitem__(self, idx):
-        print("getitem ", idx)
+        # print("getitem ", idx)
         # given index, return anchor, positive, and negative samples
         # get anchor sample
         anchor_feature = self.features[idx]
