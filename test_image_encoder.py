@@ -22,7 +22,7 @@ import pandas as pd
 from PIL import Image
 
 from rl4dgm.models.my_models import LinearModel
-from rl4dgm.models.mydatasets import HumanRewardDataset, TripletDataset
+from rl4dgm.models.mydatasets import HumanRewardDataset, TripletDataset, FeatureLabelDataset
 
 def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,):
     assert sum([input_dir is not None, image_paths is not None]) == 1, "Either input_dir or image_paths should be provided (but not both)"
@@ -53,12 +53,13 @@ def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,)
     return images
     # return torch.stack(images)
 
-def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size, device):
+def get_datasets(features, rewards, n_samples_per_epoch, train_ratio, batch_size, device):
     """
     Create train and test datasets
     Args:
-        features (torch.Tensor) : images or features
-        scores (toorch.Tensor) : scores for images
+        features (torch.Tensor) : image features
+        human_rewards : human reward labels corresponding to the features
+        ai_rewards : ai reward labels corresponding to the features
         n_samples_per_epoch (int) : number of samples per epoch (so images from each epoch is separated into train and test)
         train_ratio (float) : ratio of data to use as train data
         batch_size (int) : batch size for dataloaders
@@ -78,36 +79,33 @@ def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size,
 
     train_features = features[train_indices]
     test_features = features[test_indices]
-    train_scores = torch.tensor(scores[train_indices].values)
-    test_scores = torch.tensor(scores[test_indices].values)
+    train_rewards = torch.tensor(rewards[train_indices].values)
+    test_rewards = torch.tensor(rewards[test_indices].values)
 
     print("Split into train and test")
     print("Initializing train set")
-    trainset = TripletDataset(
-        features=train_features,
-        scores=train_scores,
+    trainset = FeatureLabelDataset(
+        features=train_features, 
+        labels=train_rewards, 
         device=device,
-        is_train=True,
     )
-
     print("Initializing test set")
-    testset = TripletDataset(
+    testset = FeatureLabelDataset(
         features=test_features,
-        scores=test_scores,
+        labels=test_rewards, 
         device=device,
-        is_train=False,
     )
 
     print("Initializing DataLoaders")
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=True)
-    return trainloader, testloader, train_features, test_features, train_scores, test_scores
+    return trainloader, testloader, train_features, test_features, train_rewards, test_rewards
 
-def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir="image_encoder", save_every=10):
+def train(model, trainloader, train_features, test_features, train_rewards, test_rewards, n_epochs=100, lr=0.001, model_save_dir="image_encoder", save_every=10):
     
     # initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.TripletMarginLoss(p=2, margin=1.0)
+    criterion = nn.MSELoss()
 
     n_steps = 0
     start_time = time.time()
@@ -117,15 +115,13 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
         ###############################################################################
         # Train
         ###############################################################################
-        print("Training...")
-        for step, (anchor_features, anchor_scores, positive_features, negative_features) in enumerate(trainloader):
+        for step, (features, reward) in enumerate(trainloader):
             optimizer.zero_grad()
-            anchor_out = model(anchor_features)
-            positive_out = model(positive_features)
-            negative_out = model(negative_features)
-
-            loss = criterion(anchor_out, positive_out, negative_out)
-            # print("loss", loss.item())
+            predictions = model(features)
+            print("predictions", predictions)
+            print("ground truth", reward)
+            loss = criterion(predictions, reward[:,None])
+            print("loss", loss.item())
             loss.backward()
             optimizer.step()
             running_losses.append(loss.item())
@@ -142,44 +138,35 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
         ###############################################################################
         # Test
         ###############################################################################
-        print("Evaluating...")
         with torch.no_grad():
-            # trainset
-            anchor_positive = []
-            anchor_negative = []
-            for step, (anchor_features, anchor_scores, positive_features, negative_features) in enumerate(trainloader):
-                # get anchor-positive and anchor-negative distances
-                anchor_out = model(anchor_features)
-                positive_out = model(positive_features)
-                negative_out = model(negative_features)
-                anchor_positive_dist = torch.linalg.norm(anchor_out - positive_out, dim=1)
-                anchor_positive.append(anchor_positive_dist.mean().item())
-                anchor_negative_dist = torch.linalg.norm(anchor_out - negative_out, dim=1)
-                anchor_negative.append(anchor_negative_dist.mean().item())
-                
-            wandb.log({
-                "train_anchor_positive_dist" : np.array(anchor_positive).mean(),
-                "train_anchor_negative_dist" : np.array(anchor_negative).mean(),
-            })
+            train_outputs = torch.flatten(model(train_features).cpu())
+            test_outputs = torch.flatten(model(test_features).cpu())
+            train_labels = train_rewards.cpu()
+            test_labels = test_rewards.cpu()
 
-            # testset
-            anchor_positive = []
-            anchor_negative = []
-            for step, (anchor_features, anchor_scores, positive_features, negative_features) in enumerate(testloader):
-                # get anchor-positive and anchor-negative distances
-                anchor_out = model(anchor_features)
-                positive_out = model(positive_features)
-                negative_out = model(negative_features)
-                anchor_positive_dist = torch.linalg.norm(anchor_out - positive_out, dim=1)
-                anchor_positive.append(anchor_positive_dist.mean().item())
-                anchor_negative_dist = torch.linalg.norm(anchor_out - negative_out, dim=1)
-                anchor_negative.append(anchor_negative_dist.mean().item())
-                
-            wandb.log({
-                "test_anchor_positive_dist" : np.array(anchor_positive).mean(),
-                "test_anchor_negative_dist" : np.array(anchor_negative).mean(),
-            })
+            train_errors = np.abs(train_outputs - train_labels)
+            test_errors = np.abs(test_outputs - test_labels)
 
+            train_percent_error = train_errors / (train_errors.max() - train_errors.min())
+            test_percent_error = test_errors / (test_errors.max() - test_errors.min())
+
+            wandb.log({
+                "train_mean_error" : train_errors.mean(),
+                "train_mean_percent_error" : train_percent_error.mean(),
+                "train_samples_with_under_10%_error" : (train_percent_error < 0.1).sum() / train_outputs.shape[0],
+                "train_samples_with_under_20%_error" : (train_percent_error < 0.2).sum() / train_outputs.shape[0],
+                "train_samples_with_under_30%_error" : (train_percent_error < 0.3).sum() / train_outputs.shape[0],
+                "train_samples_with_under_40%_error" : (train_percent_error < 0.4).sum() / train_outputs.shape[0],
+                "train_samples_with_under_50%_error" : (train_percent_error < 0.5).sum() / train_outputs.shape[0],
+                "test_mean_error" : test_errors.mean(),
+                "test_mean_percent_error" : test_percent_error.mean(),
+                "test_samples_with_under_10%_error" : (test_percent_error < 0.1).sum() / test_outputs.shape[0],
+                "test_samples_with_under_20%_error" : (test_percent_error < 0.2).sum() / test_outputs.shape[0],
+                "test_samples_with_under_30%_error" : (test_percent_error < 0.3).sum() / test_outputs.shape[0],
+                "test_samples_with_under_40%_error" : (test_percent_error < 0.4).sum() / test_outputs.shape[0],
+                "test_samples_with_under_50%_error" : (test_percent_error < 0.5).sum() / test_outputs.shape[0],
+            })
+        
         if (epoch > 0) and (epoch % save_every) == 0:
             print("Saving model checkpoint...")
             torch.save(model.state_dict(), os.path.join(model_save_dir, f"epoch{epoch}.pt"))
@@ -188,6 +175,7 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
     print("Saving model checkpoint...")
     torch.save(model.state_dict(), os.path.join(model_save_dir, f"epoch{epoch}.pt"))
     print("done")
+
 
 def main(args):
 
@@ -245,15 +233,36 @@ def main(args):
     print("Flattened features to shape", feature_shape)
     # breakpoint()
 
+    # load AI encoder model
+    with open(os.path.join(args.encoder_model_dir, "train_config.json")) as f:
+        encoder_conf = json.load(f)
+    ai_encoder = LinearModel(
+        input_dim=encoder_conf["input_dim"],
+        hidden_dims=encoder_conf["hidden_dims"],
+        output_dim=encoder_conf["output_dim"],
+        device=args.device,
+    )
+    ai_encoder.load_state_dict(torch.load(os.path.join(args.encoder_model_dir, "epoch99.pt")))
+    ai_encoder.eval()
+    ai_encoder.to(args.device)
+    print(ai_encoder)
+    print("loaded AI encoder model")
+    
+    # encode features
+    ai_features = ai_encoder(features.to(args.device))
+    ai_feature_shape = ai_features.shape
+    print("encoded features. feature shape ", ai_feature_shape)
+
+
     # get labels
     df = pd.read_pickle(args.datafile)
     human_rewards = df["human_rewards"]
     ai_rewards = df["ai_rewards"]
 
     # setup datasets
-    trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards = get_datasets(
-        features=features,
-        scores=ai_rewards,
+    trainloader, testloader, train_features, test_features, train_rewards, test_rewards = get_datasets(
+        features=ai_features,
+        rewards=ai_rewards,
         n_samples_per_epoch=args.n_samples_per_epoch,
         train_ratio=args.train_ratio,
         batch_size=args.batch_size,
@@ -264,7 +273,7 @@ def main(args):
     # setup model
     # flatten the features if using linear model
     model = LinearModel(
-        input_dim=features.shape[1],
+        input_dim=ai_features.shape[1],
         hidden_dims=args.hidden_dims,
         output_dim=args.output_dim,
         device=args.device,
@@ -276,7 +285,7 @@ def main(args):
     # setup wandb for logging
     # ai_feedback_dim = str(args.ai_feedback_dim) if args.use_ai_feedback else "none"
     train_config={
-        "input_dim" : features.shape[1],
+        "input_dim" : ai_features.shape[1],
         "hidden_dims" : args.hidden_dims,
         "n_hidden_layers" : args.n_hidden_layers,
         "output_dim" : args.output_dim,
@@ -292,8 +301,8 @@ def main(args):
 
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"AIencoder"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        project="encoder training",
+        name=args.experiment+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
+        project="ai reward predictor training",
         entity="misoshiruseijin",
         config=train_config,
     )
@@ -302,7 +311,10 @@ def main(args):
     train(
         model=model,
         trainloader=trainloader, 
-        testloader=testloader, 
+        train_features=train_features,
+        test_features=test_features,
+        train_rewards=train_rewards,
+        test_rewards=test_rewards,
         n_epochs=args.n_epochs,
         lr=args.lr,
         model_save_dir=save_dir,
@@ -315,18 +327,19 @@ if __name__ == "__main__":
     parser.add_argument("--img-dir", type=str, default="/home/hayano/all_aesthetic")
     parser.add_argument("--datafile", type=str, default="/home/hayano/all_aesthetic.pkl")
     parser.add_argument("--save-dir", type=str, default="/home/hayano/img_encoder_ai")
-    parser.add_argument("--save-every", type=str, default=200)
+    parser.add_argument("--save-every", type=str, default=100)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--n-samples-per-epoch", type=int, default=256)
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--n-epochs", type=int, default=1000)
+    parser.add_argument("--n-epochs", type=int, default=100)
     parser.add_argument("--lr", type=float, default=1e-4)
-    parser.add_argument("--hidden-dims", nargs="*", type=int, default=[22000]*6)
+    parser.add_argument("--hidden-dims", nargs="*", type=int, default=[2048]*6)
     parser.add_argument("--n-hidden-layers", type=int, default=5)
-    parser.add_argument("--output-dim", type=int, default=4096)
+    parser.add_argument("--output-dim", type=int, default=1)
     parser.add_argument("--experiment", type=str, default="")
     parser.add_argument("--featurefile", type=str, default="/home/hayano/all_aesthetic_feature.pt")
+    parser.add_argument("--encoder-model-dir", type=str, default="/home/hayano/img_encoder_ai/test_ai_encoder")
 
     args = parser.parse_args()
     main(args)

@@ -27,30 +27,46 @@ class TripletDataset(Dataset):
         anchor_feature = self.features[idx]
         anchor_score = self.scores[idx]
 
-        if self.is_train:
-            # TODO - sample with dynamic probability depending on score similarity
-            score_diff = self.scores[self.indices] - anchor_score
-            most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
-            positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
-            positive_feature = self.features[positive_index]
+        # TODO - sample with dynamic probability depending on score similarity
+        score_diff = self.scores[self.indices] - anchor_score
+        most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
+        positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
+        positive_feature = self.features[positive_index]
 
-            negative_index = random.choice(most_to_least_similar_indices[int(0.5*self.features.shape[0]):])
-            negative_feature = self.features[negative_index]
-            
-            # # get positive sample
-            # positive_indices = self.indices[(self.indices != idx) \
-            #     & (((self.scores[self.indices] - anchor_score)) < 0.2*self.score_range)]
-            # positive_index = random.choice(positive_indices)
-            # positive_feature = self.features[positive_index]
-            
-            # # get negative sample
-            # negative_indices = self.indices[(self.scores[self.indices] - anchor_score) > 0.5*self.score_range]
-            # negative_index = random.choice(negative_indices)
-            # negative_feature = self.features[negative_index]
-            
-            return anchor_feature, anchor_score, positive_feature, negative_feature, 
-        else:
-            return anchor_feature, anchor_score, None, None
+        negative_index = random.choice(most_to_least_similar_indices[int(0.9*self.features.shape[0]):])
+        negative_feature = self.features[negative_index]
+        
+        # # get positive sample
+        # positive_indices = self.indices[(self.indices != idx) \
+        #     & (((self.scores[self.indices] - anchor_score)) < 0.2*self.score_range)]
+        # positive_index = random.choice(positive_indices)
+        # positive_feature = self.features[positive_index]
+        
+        # # get negative sample
+        # negative_indices = self.indices[(self.scores[self.indices] - anchor_score) > 0.5*self.score_range]
+        # negative_index = random.choice(negative_indices)
+        # negative_feature = self.features[negative_index]
+
+        return anchor_feature, anchor_score, positive_feature, negative_feature, 
+
+class FeatureLabelDataset(Dataset):
+    def __init__(
+        self,
+        features,
+        labels,
+        device,
+    ):
+        super(FeatureLabelDataset, self).__init__()
+        self.features = features.float().to(device)
+        self.labels = labels.float().to(device)
+
+    def __len__(self):
+        return self.features.shape[0]
+    
+    def __getitem__(self, idx):
+        return self.features[idx], self.labels[idx]
+    
+
 
 class HumanRewardDataset(Dataset):
     def __init__(
