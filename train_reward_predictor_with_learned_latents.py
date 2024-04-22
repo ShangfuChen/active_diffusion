@@ -138,8 +138,8 @@ def train(model, trainloader, train_features, test_features, train_rewards, test
             train_errors = np.abs(train_outputs - train_labels)
             test_errors = np.abs(test_outputs - test_labels)
 
-            train_percent_error = train_errors / (train_errors.max() - train_errors.min())
-            test_percent_error = test_errors / (test_errors.max() - test_errors.min())
+            train_percent_error = train_errors / (train_labels.max() - train_labels.min())
+            test_percent_error = test_errors / (test_labels.max() - test_labels.min())
 
             wandb.log({
                 "train_mean_error" : train_errors.mean(),
@@ -267,15 +267,15 @@ if __name__ == "__main__":
     parser.add_argument("--n-samples-per-epoch", type=int, default=256)
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--n-epochs", type=int, default=50)
+    parser.add_argument("--n-epochs", type=int, default=500)
     parser.add_argument("--lr", type=float, default=1e-6)
     parser.add_argument("--hidden-dims", nargs="*", type=int, default=[2048]*6)
     parser.add_argument("--n-hidden-layers", type=int, default=5)
     parser.add_argument("--output-dim", type=int, default=1)
     parser.add_argument("--experiment", type=str, default="ai_reward_prediction")
     parser.add_argument("--featurefile", type=str, default="/home/hayano/all_aesthetic_feature.pt")
-    parser.add_argument("--encoder-model-dir", type=str, default="/home/hayano/img_encoder_ai/test_ai_encoder")
-    parser.add_argument("--save-every", type=int, default=100)
+    parser.add_argument("--encoder-model-dir", type=str, default="/home/hayano/img_encoder_ai")
+    parser.add_argument("--save-every", type=int, default=500)
 
     args = parser.parse_args()
     main(args)

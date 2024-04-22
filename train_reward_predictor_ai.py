@@ -147,8 +147,8 @@ def train(model, trainloader, testloader, train_features, test_features, train_r
             train_errors = np.abs(train_outputs - train_labels)
             test_errors = np.abs(test_outputs - test_labels)
 
-            train_percent_error = train_errors / (train_errors.max() - train_errors.min())
-            test_percent_error = test_errors / (test_errors.max() - test_errors.min())
+            train_percent_error = train_errors / (train_labels.max() - train_labels.min())
+            test_percent_error = test_errors / (test_labels.max() - test_labels.min())
 
             wandb.log({
                 "train_mean_error" : train_errors.mean(),

@@ -1,3 +1,8 @@
+"""
+Train the second image encoder given another trained encoder
+e.g. use pretrained AI image encoder to train human encoder via contrastive loss
+"""
+
 
 import os
 import math
@@ -19,7 +24,7 @@ import datetime
 import pandas as pd
 
 from rl4dgm.models.my_models import LinearModel
-from rl4dgm.models.mydatasets import TripletDataset
+from rl4dgm.models.mydatasets import DoubleTripletDataset
 
 def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,):
     assert sum([input_dir is not None, image_paths is not None]) == 1, "Either input_dir or image_paths should be provided (but not both)"
@@ -50,7 +55,12 @@ def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,)
     return images
     # return torch.stack(images)
 
-def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size, device):
+def get_datasets(
+        features, encoded_features, 
+        scores_self, scores_other, 
+        n_samples_per_epoch, train_ratio, batch_size, 
+        device
+    ):
     """
     Create train and test datasets
     Args:
@@ -75,36 +85,44 @@ def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size,
 
     train_features = features[train_indices]
     test_features = features[test_indices]
-    train_scores = torch.tensor(scores[train_indices].values)
-    test_scores = torch.tensor(scores[test_indices].values)
-
+    train_encoded_features = encoded_features[train_indices]
+    test_encoded_features = encoded_features[test_indices]
+    train_scores_self = torch.tensor(scores_self[train_indices].values)
+    test_scores_self = torch.tensor(scores_self[test_indices].values)
+    train_scores_other = torch.tensor(scores_other[train_indices].values)
+    test_scores_other = torch.tensor(scores_other[test_indices].values)
+    
     print("Split into train and test")
     print("Initializing train set")
-    trainset = TripletDataset(
+    trainset = DoubleTripletDataset(
         features=train_features,
-        scores=train_scores,
+        encoded_features=train_encoded_features,
+        scores_self=train_scores_self,
+        scores_other=train_scores_other,
         device=device,
-        is_train=True,
     )
 
     print("Initializing test set")
-    testset = TripletDataset(
+    testset = DoubleTripletDataset(
         features=test_features,
-        scores=test_scores,
+        encoded_features=test_encoded_features,
+        scores_self=test_scores_self,
+        scores_other=test_scores_other,
         device=device,
-        is_train=False,
     )
 
     print("Initializing DataLoaders")
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=True)
-    return trainloader, testloader, train_features, test_features, train_scores, test_scores
+
+    return trainloader, testloader
 
 def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir="image_encoder", save_every=10):
     
     # initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
-    criterion = nn.TripletMarginLoss(p=2, margin=1.0)
+    criterion_self = nn.TripletMarginLoss(p=2, margin=1.0) 
+    criterion_other = nn.TripletMarginLoss(p=2, margin=1.0)
 
     n_steps = 0
     start_time = time.time()
@@ -115,13 +133,16 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
         # Train
         ###############################################################################
         print("Training...")
-        for step, (anchor_features, anchor_scores, positive_features, negative_features) in enumerate(trainloader):
+        for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other) in enumerate(trainloader):
             optimizer.zero_grad()
             anchor_out = model(anchor_features)
-            positive_out = model(positive_features)
-            negative_out = model(negative_features)
-
-            loss = criterion(anchor_out, positive_out, negative_out)
+            positive_out_self = model(positive_feature_self)
+            negative_out_self = model(negative_feature_self)
+            positive_out_other = model(positive_feature_other)
+            negative_out_other = model(negative_feature_other)
+            loss_self = criterion_self(anchor_out, positive_out_self, negative_out_self)
+            loss_other = criterion_other(anchor_out, positive_out_other, negative_out_other)
+            loss = loss_self + loss_other
             # print("loss", loss.item())
             loss.backward()
             optimizer.step()
@@ -131,6 +152,8 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
             wandb.log({
                 "epoch" : epoch,
                 "step" : n_steps,
+                "loss_self" : loss_self.item(),
+                "loss_other" : loss_other.item(),
                 "loss" : loss.item(),
                 "lr" : lr,
                 "clock_time" : time.time() - start_time,
@@ -142,44 +165,69 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
         print("Evaluating...")
         with torch.no_grad():
             # trainset
-            anchor_positive = []
-            anchor_negative = []
-            for step, (anchor_features, anchor_scores, positive_features, negative_features) in enumerate(trainloader):
+            anchor_positive_self = []
+            anchor_negative_self = []
+            anchor_positive_other = []
+            anchor_negative_other = []
+
+            for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other) in enumerate(trainloader):
                 # get anchor-positive and anchor-negative distances
                 anchor_out = model(anchor_features)
-                positive_out = model(positive_features)
-                negative_out = model(negative_features)
-                anchor_positive_dist = torch.linalg.norm(anchor_out - positive_out, dim=1)
-                anchor_positive.append(anchor_positive_dist.mean().item())
-                anchor_negative_dist = torch.linalg.norm(anchor_out - negative_out, dim=1)
-                anchor_negative.append(anchor_negative_dist.mean().item())
+                positive_out_self = model(positive_feature_self)
+                negative_out_self = model(negative_feature_self)
+                positive_out_other = model(positive_feature_other)
+                negative_out_other = model(negative_feature_other)
+
+                anchor_positive_dist_self = torch.linalg.norm(anchor_out - positive_out_self, dim=1)
+                anchor_positive_self.append(anchor_positive_dist_self.mean().item())
+                anchor_negative_dist_self = torch.linalg.norm(anchor_out - negative_out_self, dim=1)
+                anchor_negative_self.append(anchor_negative_dist_self.mean().item())
+
+                anchor_positive_dist_other = torch.linalg.norm(anchor_out - positive_out_other, dim=1)
+                anchor_positive_other.append(anchor_positive_dist_other.mean().item())
+                anchor_negative_dist_other = torch.linalg.norm(anchor_out - negative_out_other, dim=1)
+                anchor_negative_other.append(anchor_negative_dist_other.mean().item())
                 
             wandb.log({
-                "train_anchor_positive_dist" : np.array(anchor_positive).mean(),
-                "train_anchor_negative_dist" : np.array(anchor_negative).mean(),
-                "train_dist_diff" : (np.array(anchor_positive) - np.array(anchor_negative)).mean(),
+                "train_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
+                "train_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
+                "train_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
+                "train_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
             })
 
             # testset
-            anchor_positive = []
-            anchor_negative = []
-            for step, (anchor_features, anchor_scores, positive_features, negative_features) in enumerate(testloader):
+            anchor_positive_self = []
+            anchor_negative_self = []
+            anchor_positive_other = []
+            anchor_negative_other = []
+
+            for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other) in enumerate(testloader):
                 # get anchor-positive and anchor-negative distances
                 anchor_out = model(anchor_features)
-                positive_out = model(positive_features)
-                negative_out = model(negative_features)
-                anchor_positive_dist = torch.linalg.norm(anchor_out - positive_out, dim=1)
-                anchor_positive.append(anchor_positive_dist.mean().item())
-                anchor_negative_dist = torch.linalg.norm(anchor_out - negative_out, dim=1)
-                anchor_negative.append(anchor_negative_dist.mean().item())
+                positive_out_self = model(positive_feature_self)
+                negative_out_self = model(negative_feature_self)
+                positive_out_other = model(positive_feature_other)
+                negative_out_other = model(negative_feature_other)
+
+                anchor_positive_dist_self = torch.linalg.norm(anchor_out - positive_out_self, dim=1)
+                anchor_positive_self.append(anchor_positive_dist_self.mean().item())
+                anchor_negative_dist_self = torch.linalg.norm(anchor_out - negative_out_self, dim=1)
+                anchor_negative_self.append(anchor_negative_dist_self.mean().item())
+
+                anchor_positive_dist_other = torch.linalg.norm(anchor_out - positive_out_other, dim=1)
+                anchor_positive_other.append(anchor_positive_dist_other.mean().item())
+                anchor_negative_dist_other = torch.linalg.norm(anchor_out - negative_out_other, dim=1)
+                anchor_negative_other.append(anchor_negative_dist_other.mean().item())
                 
             wandb.log({
-                "test_anchor_positive_dist" : np.array(anchor_positive).mean(),
-                "test_anchor_negative_dist" : np.array(anchor_negative).mean(),
-                "test_dist_diff" : (np.array(anchor_positive) - np.array(anchor_negative)).mean(),
+                "test_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
+                "test_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
+                "test_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
+                "test_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
             })
 
-        if (epoch > 0) and (epoch % save_every) == 0:
+        # if (epoch > 0) and (epoch % save_every) == 0:
+        if epoch % save_every == 0:
             print("Saving model checkpoint...")
             torch.save(model.state_dict(), os.path.join(model_save_dir, f"epoch{epoch}.pt"))
             print("done")
@@ -194,7 +242,7 @@ def main(args):
     torch.manual_seed(0)
 
     # create directory to save model 
-    save_dir = os.path.join(args.save_dir, f"{args.agent}", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    save_dir = os.path.join(args.save_dir, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     os.makedirs(save_dir, exist_ok=False)
     
     if not os.path.exists(args.featurefile):
@@ -249,12 +297,37 @@ def main(args):
     # human_rewards = df["human_rewards"]
     # ai_rewards = df["ai_rewards"]
 
-    rewards = df[f"{args.agent}_rewards"]
+    if args.agent == "human":
+        rewards_self = df["human_rewards"]
+        rewards_other = df["ai_rewards"]
+    elif args.agent == "ai":
+        rewards_self = df["ai_rewards"]
+        rewards_other = df["human_rewards"]
+
+    # load other agent's pretrained encoder and get latent embeddings
+    with open(args.pretrained_encoder_state_dict) as f:
+        pretrained_encoder_conf = json.load(f)
+    pretrained_encoder = LinearModel(
+        input_dim=pretrained_encoder_conf["input_dim"],
+        hidden_dims=pretrained_encoder_conf["hidden_dims"],
+        output_dim=pretrained_encoder_conf["output_dim"],
+        device=args.device,
+    )
+    pretrained_encoder.load_state_dict(torch.load(args.pretrained_encoder_conf))
+    pretrained_encoder.to(args.device)
+    print(pretrained_encoder)
+    print("loaded pretrained encoder model")
+
+    # encode via pretrained encoder
+    with torch.no_grad():
+        pretrained_encoder_features = pretrained_encoder(features.to(args.device)).cpu()
 
     # setup datasets
-    trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards = get_datasets(
+    trainloader, testloader = get_datasets(
         features=features,
-        scores=rewards,
+        encoded_features=pretrained_encoder_features,
+        scores_self=rewards_self,
+        scores_other=rewards_other,
         n_samples_per_epoch=args.n_samples_per_epoch,
         train_ratio=args.train_ratio,
         batch_size=args.batch_size,
@@ -263,7 +336,6 @@ def main(args):
     print("initialized dataloaders")
 
     # setup model
-    # flatten the features if using linear model
     model = LinearModel(
         input_dim=features.shape[1],
         hidden_dims=args.hidden_dims,
@@ -291,10 +363,11 @@ def main(args):
     with open(os.path.join(save_dir, "train_config.json"), "w") as f:
         json.dump(train_config, f)
 
+    other_agent = "human" if args.agent == "ai" else "ai"
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"{args.agent}encoder"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        project="encoder training",
+        name=args.experiment+f"{args.agent}Encoderfrom{other_agent}Encoder"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
+        project="encoder training 2",
         entity="misoshiruseijin",
         config=train_config,
     )
@@ -315,8 +388,8 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--img-dir", type=str, default="/home/hayano/all_aesthetic")
     parser.add_argument("--datafile", type=str, default="/home/hayano/all_aesthetic.pkl")
-    parser.add_argument("--save-dir", type=str, default="/home/data2/hayano/img_encoders")
-    parser.add_argument("--save-every", type=int, default=200)
+    parser.add_argument("--save-dir", type=str, default="/home/data2/hayano/img_encoder_ai")
+    parser.add_argument("--save-every", type=str, default=200)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--n-samples-per-epoch", type=int, default=256)
     parser.add_argument("--train-ratio", type=float, default=0.8)
@@ -329,6 +402,8 @@ if __name__ == "__main__":
     parser.add_argument("--experiment", type=str, default="")
     parser.add_argument("--featurefile", type=str, default="/home/hayano/all_aesthetic_feature.pt")
     parser.add_argument("--agent", type=str, default="ai", help="which agent's rewards to use for encoder training - ai or human")
+    parser.add_argument("--pretrained-encoder-state-dict", type=str, help="path to state dict pt file")
+    parser.add_argument("--pretrained-encoder-conf", type=str, help="path to pretrained encoder config json")
 
     args = parser.parse_args()
     main(args)

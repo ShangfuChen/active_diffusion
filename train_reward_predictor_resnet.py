@@ -21,7 +21,7 @@ import pandas as pd
 from PIL import Image
 
 from rl4dgm.models.reward_predictor_model import RewardPredictorModel, RewardPredictorModel2
-from active_diffusion.rl4dgm.models.mydatasets import HumanRewardDataset
+from rl4dgm.models.mydatasets import HumanRewardDataset
 
 
 def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,):
@@ -150,8 +150,8 @@ def train(model, trainloader, testloader, train_features, test_features, train_h
             train_errors = np.abs(train_outputs - train_labels)
             test_errors = np.abs(test_outputs - test_labels)
 
-            train_percent_error = train_errors / (train_errors.max() - train_errors.min())
-            test_percent_error = test_errors / (test_errors.max() - test_errors.min())
+            train_percent_error = train_errors / (train_labels.max() - train_labels.min())
+            test_percent_error = test_errors / (test_labels.max() - test_labels.min())
 
             wandb.log({
                 "train_mean_error" : train_errors.mean(),
@@ -253,9 +253,9 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--img-dir", type=str, default="/home/ayanoh/all_aesthetic")
-    parser.add_argument("--datafile", type=str, default="/home/ayanoh/all_aesthetic.pkl")
-    parser.add_argument("--save-dir", type=str, default="/home/ayanoh/reward_model_training_results")
+    parser.add_argument("--img-dir", type=str, default="/home/hayano/all_aesthetic")
+    parser.add_argument("--datafile", type=str, default="/home/hayano/all_aesthetic.pkl")
+    parser.add_argument("--save-dir", type=str, default="/home/hayano/reward_model_training_results")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--n-samples-per-epoch", type=int, default=256)
     parser.add_argument("--train-ratio", type=float, default=0.8)
