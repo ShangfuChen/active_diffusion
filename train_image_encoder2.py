@@ -59,7 +59,8 @@ def get_datasets(
         features, encoded_features, 
         scores_self, scores_other, 
         n_samples_per_epoch, train_ratio, batch_size, 
-        device
+        device,
+        sampler_type,
     ):
     """
     Create train and test datasets
@@ -100,6 +101,7 @@ def get_datasets(
         scores_self=train_scores_self,
         scores_other=train_scores_other,
         device=device,
+        sampling_method=sampler_type,
     )
 
     print("Initializing test set")
@@ -109,6 +111,7 @@ def get_datasets(
         scores_self=test_scores_self,
         scores_other=test_scores_other,
         device=device,
+        sampling_method=sampler_type,
     )
 
     print("Initializing DataLoaders")
@@ -191,8 +194,10 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
             wandb.log({
                 "train_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
                 "train_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
+                "test_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
                 "train_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
                 "train_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
+                "test_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
             })
 
             # testset
@@ -222,8 +227,10 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
             wandb.log({
                 "test_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
                 "test_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
+                "test_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
                 "test_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
                 "test_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
+                "test_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
             })
 
         # if (epoch > 0) and (epoch % save_every) == 0:
@@ -242,7 +249,7 @@ def main(args):
     torch.manual_seed(0)
 
     # create directory to save model 
-    save_dir = os.path.join(args.save_dir, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    save_dir = os.path.join(args.save_dir, f"{args.agent}", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     os.makedirs(save_dir, exist_ok=False)
     
     if not os.path.exists(args.featurefile):
@@ -305,7 +312,7 @@ def main(args):
         rewards_other = df["human_rewards"]
 
     # load other agent's pretrained encoder and get latent embeddings
-    with open(args.pretrained_encoder_state_dict) as f:
+    with open(args.pretrained_encoder_conf) as f:
         pretrained_encoder_conf = json.load(f)
     pretrained_encoder = LinearModel(
         input_dim=pretrained_encoder_conf["input_dim"],
@@ -313,7 +320,7 @@ def main(args):
         output_dim=pretrained_encoder_conf["output_dim"],
         device=args.device,
     )
-    pretrained_encoder.load_state_dict(torch.load(args.pretrained_encoder_conf))
+    pretrained_encoder.load_state_dict(torch.load(args.pretrained_encoder_state_dict, map_location=torch.device("cpu")))
     pretrained_encoder.to(args.device)
     print(pretrained_encoder)
     print("loaded pretrained encoder model")
@@ -321,6 +328,7 @@ def main(args):
     # encode via pretrained encoder
     with torch.no_grad():
         pretrained_encoder_features = pretrained_encoder(features.to(args.device)).cpu()
+        print("got encodings from pretrained encoder. latent shape", pretrained_encoder_features.shape)
 
     # setup datasets
     trainloader, testloader = get_datasets(
@@ -332,6 +340,7 @@ def main(args):
         train_ratio=args.train_ratio,
         batch_size=args.batch_size,
         device=args.device,
+        sampler_type=args.sampler,
     )
     print("initialized dataloaders")
 
@@ -389,7 +398,7 @@ if __name__ == "__main__":
     parser.add_argument("--img-dir", type=str, default="/home/hayano/all_aesthetic")
     parser.add_argument("--datafile", type=str, default="/home/hayano/all_aesthetic.pkl")
     parser.add_argument("--save-dir", type=str, default="/home/data2/hayano/img_encoder_ai")
-    parser.add_argument("--save-every", type=str, default=200)
+    parser.add_argument("--save-every", type=int, default=200)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--n-samples-per-epoch", type=int, default=256)
     parser.add_argument("--train-ratio", type=float, default=0.8)
@@ -404,6 +413,7 @@ if __name__ == "__main__":
     parser.add_argument("--agent", type=str, default="ai", help="which agent's rewards to use for encoder training - ai or human")
     parser.add_argument("--pretrained-encoder-state-dict", type=str, help="path to state dict pt file")
     parser.add_argument("--pretrained-encoder-conf", type=str, help="path to pretrained encoder config json")
+    parser.add_argument("--sampler", type=str, default="default")
 
     args = parser.parse_args()
     main(args)

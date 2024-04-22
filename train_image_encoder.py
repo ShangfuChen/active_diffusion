@@ -179,7 +179,8 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
                 "test_dist_diff" : (np.array(anchor_positive) - np.array(anchor_negative)).mean(),
             })
 
-        if (epoch > 0) and (epoch % save_every) == 0:
+        # if (epoch > 0) and (epoch % save_every) == 0:
+        if epoch % save_every == 0:
             print("Saving model checkpoint...")
             torch.save(model.state_dict(), os.path.join(model_save_dir, f"epoch{epoch}.pt"))
             print("done")
