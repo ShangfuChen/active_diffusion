@@ -78,29 +78,41 @@ def get_datasets(human_features, ai_features, human_rewards, ai_rewards, n_sampl
     # concatenate human and ai features
     train_features = torch.cat((human_features[train_indices], ai_features[train_indices]), dim=1)
     test_features = torch.cat((human_features[test_indices], ai_features[test_indices]), dim=1)
-    train_rewards = torch.tensor(human_rewards[train_indices].values) - torch.tensor(ai_rewards[train_indices].values)
-    test_rewards = torch.tensor(human_rewards[test_indices].values) - torch.tensor(ai_rewards[test_indices].values)
+    
+    train_human_rewards = torch.tensor(human_rewards[train_indices].values)
+    test_human_rewards = torch.tensor(human_rewards[test_indices].values)
+    train_ai_rewards = torch.tensor(ai_rewards[train_indices].values)
+    test_ai_rewards = torch.tensor(ai_rewards[test_indices].values)
+
+    train_error = train_human_rewards - train_ai_rewards
+    test_error = test_human_rewards - test_ai_rewards
 
     print("Split into train and test")
     print("Initializing train set")
     trainset = FeatureLabelDataset(
         features=train_features, 
-        labels=train_rewards,
+        labels=train_error,
         device=device,
     )
     print("Initializing test set")
     testset = FeatureLabelDataset(
         features=test_features,
-        labels=test_rewards,
+        labels=test_error,
         device=device,
     )
 
     print("Initializing DataLoaders")
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=True)
-    return trainloader, testloader, train_features, test_features, train_rewards, test_rewards
+    return trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards, train_ai_rewards, test_ai_rewards
 
-def train(model, trainloader, testloader, train_features, test_features, train_labels, test_labels, n_epochs=100, lr=0.001):
+def train(
+    model, trainloader, testloader, 
+    train_features, test_features, 
+    train_human_labels, test_human_labels, 
+    train_ai_labels, test_ai_labels, 
+    n_epochs=100, lr=0.001
+):
     
     # initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -116,7 +128,6 @@ def train(model, trainloader, testloader, train_features, test_features, train_l
         ###############################################################################
         for step, (features, labels) in enumerate(trainloader):
             optimizer.zero_grad()
-            # TODO - currently only feeding feature in. should be using ai feedback as well
             predictions = torch.flatten(model(features))
             # print("predictions", predictions)
             # print("ground truth", human_rewards)
@@ -141,26 +152,18 @@ def train(model, trainloader, testloader, train_features, test_features, train_l
         with torch.no_grad():
             train_outputs = torch.flatten(model(train_features))
             test_outputs = torch.flatten(model(test_features))
-            train_labels = train_labels
-            test_labels = test_labels
-
-            train_ai_rewards = train_labels[int(train_labels.shape[0]/2):]
-            train_human_rewards = train_labels[:int(train_labels.shape[0]/2)]
-            test_ai_rewards = test_labels[int(test_labels.shape[0]/2):]
-            test_human_rewards = test_labels[:int(test_labels.shape[0]/2)]
 
             # apply correction to ai rewards
-            breakpoint()
-            train_human_rewards_prediction = train_ai_rewards + train_outputs
-            test_human_rewards_prediction = test_ai_rewards + test_outputs
+            train_human_rewards_prediction = train_ai_labels + train_outputs
+            test_human_rewards_prediction = test_ai_labels + test_outputs
 
             # compute error
-            train_human_errors = np.abs(train_human_rewards_prediction - train_human_rewards)
-            test_human_errors = np.abs(test_human_rewards_prediction - test_human_rewards)
+            train_human_errors = torch.abs(train_human_rewards_prediction - train_human_labels)
+            test_human_errors = torch.abs(test_human_rewards_prediction - test_human_labels)
 
             # compute percent error
-            train_percent_error = train_human_errors / (train_human_rewards.max() - train_human_rewards.min())
-            test_percent_error = test_human_errors / (test_human_rewards.max() - test_human_rewards.min())
+            train_percent_error = train_human_errors / (train_human_labels.max() - train_human_labels.min())
+            test_percent_error = test_human_errors / (test_human_labels.max() - test_human_labels.min())
 
             # train_percent_error = train_errors / (train_errors.max() - train_errors.min())
             # test_percent_error = test_errors / (test_errors.max() - test_errors.min())
@@ -296,7 +299,7 @@ def main(args):
     #############################################################################################
     # prepare dataset
     #############################################################################################
-    trainloader, testloader, train_features, test_features, train_rewards, test_rewards = get_datasets(
+    trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards, train_ai_rewards, test_ai_rewards = get_datasets(
         human_features=human_features,
         ai_features=ai_features,
         human_rewards=human_rewards,
@@ -350,8 +353,10 @@ def main(args):
         testloader=testloader,
         train_features=train_features.to(args.device),
         test_features=test_features.to(args.device),
-        train_labels=train_rewards.to(args.device),
-        test_labels=test_rewards.to(args.device),
+        train_human_labels=train_human_rewards.to(args.device),
+        test_human_labels=test_human_rewards.to(args.device),
+        train_ai_labels=train_human_rewards.to(args.device),
+        test_ai_labels=test_human_rewards.to(args.device),
         n_epochs=args.n_epochs,
         lr=args.lr,
     )
