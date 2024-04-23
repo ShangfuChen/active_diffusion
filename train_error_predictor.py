@@ -129,8 +129,8 @@ def train(
         for step, (features, labels) in enumerate(trainloader):
             optimizer.zero_grad()
             predictions = torch.flatten(model(features))
-            # print("predictions", predictions)
-            # print("ground truth", human_rewards)
+            # print("predicted error", predictions)
+            # print("true error", labels)
             loss = criterion(predictions, labels)
             # print("loss", loss.item())
             loss.backward()
@@ -165,8 +165,7 @@ def train(
             train_percent_error = train_human_errors / (train_human_labels.max() - train_human_labels.min())
             test_percent_error = test_human_errors / (test_human_labels.max() - test_human_labels.min())
 
-            # train_percent_error = train_errors / (train_errors.max() - train_errors.min())
-            # test_percent_error = test_errors / (test_errors.max() - test_errors.min())
+            # breakpoint()
 
             wandb.log({
                 "train_mean_error" : train_human_errors.mean(),
@@ -321,6 +320,7 @@ def main(args):
         device=args.device,
     )
     error_prediction_model.to(args.device)
+    print(error_prediction_model)
     print("initialized reward errpr prediction model")
 
     #############################################################################################
@@ -355,8 +355,8 @@ def main(args):
         test_features=test_features.to(args.device),
         train_human_labels=train_human_rewards.to(args.device),
         test_human_labels=test_human_rewards.to(args.device),
-        train_ai_labels=train_human_rewards.to(args.device),
-        test_ai_labels=test_human_rewards.to(args.device),
+        train_ai_labels=train_ai_rewards.to(args.device),
+        test_ai_labels=test_ai_rewards.to(args.device),
         n_epochs=args.n_epochs,
         lr=args.lr,
     )

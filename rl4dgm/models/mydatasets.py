@@ -4,6 +4,10 @@ import torch
 from torch.utils.data import Dataset
 from torch.distributions import Normal
 
+
+import time
+
+
 class TripletDataset(Dataset):
     def __init__(
         self,
@@ -55,18 +59,42 @@ class TripletDataset(Dataset):
         ##############################################################################################
         # Sample from gaussian depending on similarity
         ##############################################################################################
+        # elif self.sampling_method == "weighted_gaussian":
+        #     mean = anchor_score
+        #     std = self.sampling_std * self.score_range
+        #     dist = Normal(loc=mean, scale=std) # normal distribution centered around anchor
+        #     prob_density = torch.exp(dist.log_prob(self.scores))
+        #     max_prob = prob_density.max()
+        #     positive_weights = prob_density.clone() # sampling weights for positive samples
+        #     positive_weights[torch.argmax(prob_density).item()] = 0.0 # exclude anchor
+        #     negative_weights = max_prob - prob_density # sampling weights for negative samples
+            
+        #     positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
+        #     negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
+
+        #     positive_feature = self.features[positive_idx]
+        #     negative_feature = self.features[negative_idx]
         elif self.sampling_method == "weighted_gaussian":
+            start_time = time.time()
             mean = anchor_score
             std = self.sampling_std * self.score_range
             dist = Normal(loc=mean, scale=std) # normal distribution centered around anchor
+            print("Guassian initialized", time.time() - start_time)
             prob_density = torch.exp(dist.log_prob(self.scores))
+            print("computed pdf", time.time() - start_time)
             max_prob = prob_density.max()
             positive_weights = prob_density.clone() # sampling weights for positive samples
             positive_weights[torch.argmax(prob_density).item()] = 0.0 # exclude anchor
+            print("got positive weights", time.time() - start_time)
+
             negative_weights = max_prob - prob_density # sampling weights for negative samples
+            print("got negative weights", time.time() - start_time)
             
             positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
+            print("chose positive idx", time.time() - start_time)
+            
             negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
+            print("chose negative idx", time.time() - start_time)
 
             positive_feature = self.features[positive_idx]
             negative_feature = self.features[negative_idx]
