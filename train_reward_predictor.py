@@ -1,4 +1,9 @@
 
+"""
+OUTDATED AND BUGGY DON'T USE
+"""
+
+
 import os
 import math
 import time

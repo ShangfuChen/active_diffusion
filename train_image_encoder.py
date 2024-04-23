@@ -50,7 +50,7 @@ def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,)
     return images
     # return torch.stack(images)
 
-def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size, device):
+def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size, device, sampler):
     """
     Create train and test datasets
     Args:
@@ -85,6 +85,7 @@ def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size,
         scores=train_scores,
         device=device,
         is_train=True,
+        sampling_method=sampler,
     )
 
     print("Initializing test set")
@@ -93,6 +94,7 @@ def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size,
         scores=test_scores,
         device=device,
         is_train=False,
+        sampling_method=sampler,
     )
 
     print("Initializing DataLoaders")
@@ -157,7 +159,7 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
             wandb.log({
                 "train_anchor_positive_dist" : np.array(anchor_positive).mean(),
                 "train_anchor_negative_dist" : np.array(anchor_negative).mean(),
-                "train_dist_diff" : (np.array(anchor_positive) - np.array(anchor_negative)).mean(),
+                "train_dist_diff" : (np.array(anchor_negative) - np.array(anchor_positive)).mean(),
             })
 
             # testset
@@ -176,7 +178,7 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
             wandb.log({
                 "test_anchor_positive_dist" : np.array(anchor_positive).mean(),
                 "test_anchor_negative_dist" : np.array(anchor_negative).mean(),
-                "test_dist_diff" : (np.array(anchor_positive) - np.array(anchor_negative)).mean(),
+                "test_dist_diff" : (np.array(anchor_negative) - np.array(anchor_positive)).mean(),
             })
 
         # if (epoch > 0) and (epoch % save_every) == 0:
@@ -195,7 +197,7 @@ def main(args):
     torch.manual_seed(0)
 
     # create directory to save model 
-    save_dir = os.path.join(args.save_dir, f"{args.agent}", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    save_dir = os.path.join(args.save_dir, f"{args.agent}_{args.experiment}"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     os.makedirs(save_dir, exist_ok=False)
     
     if not os.path.exists(args.featurefile):
@@ -260,6 +262,7 @@ def main(args):
         train_ratio=args.train_ratio,
         batch_size=args.batch_size,
         device=args.device,
+        sampler=args.sampler,
     )
     print("initialized dataloaders")
 
@@ -330,6 +333,7 @@ if __name__ == "__main__":
     parser.add_argument("--experiment", type=str, default="")
     parser.add_argument("--featurefile", type=str, default="/home/hayano/all_aesthetic_feature.pt")
     parser.add_argument("--agent", type=str, default="ai", help="which agent's rewards to use for encoder training - ai or human")
+    parser.add_argument("--sampler", type=str, default="default")
 
     args = parser.parse_args()
     main(args)

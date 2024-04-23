@@ -194,10 +194,10 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
             wandb.log({
                 "train_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
                 "train_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
-                "test_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
+                "train_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
                 "train_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
                 "train_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
-                "test_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
+                "train_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
             })
 
             # testset

@@ -3,7 +3,6 @@ import os
 import math
 import time
 
-import json
 import random
 import numpy as np
 import torch 
@@ -20,7 +19,7 @@ import datetime
 import pandas as pd
 
 from rl4dgm.models.my_models import LinearModel
-from rl4dgm.models.mydatasets import HumanRewardDataset, FeatureLabelDataset
+from rl4dgm.models.mydatasets import HumanRewardDataset
 
 
 def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,):
@@ -49,7 +48,7 @@ def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,)
     
     return torch.stack(images)
 
-def get_datasets(features, rewards, n_samples_per_epoch, train_ratio, batch_size, device):
+def get_datasets(features, human_rewards, ai_rewards, n_samples_per_epoch, train_ratio, batch_size, device):
     """
     Create train and test datasets
     Args:
@@ -75,23 +74,33 @@ def get_datasets(features, rewards, n_samples_per_epoch, train_ratio, batch_size
 
     train_features = features[train_indices]
     test_features = features[test_indices]
-    train_rewards = torch.tensor(rewards[train_indices].values)
-    test_rewards = torch.tensor(rewards[test_indices].values)
+    train_human_rewards = torch.tensor(human_rewards[train_indices].values)
+    test_human_rewards = torch.tensor(human_rewards[test_indices].values)
+    train_ai_rewards = torch.tensor(ai_rewards[train_indices].values)
+    test_ai_rewards = torch.tensor(ai_rewards[test_indices].values)
 
     print("Split into train and test")
     print("Initializing train set")
-    trainset = FeatureLabelDataset(
-        features=train_features,
-        labels=train_rewards,
+    trainset = HumanRewardDataset(
+        features=train_features, 
+        human_rewards=train_human_rewards, 
+        ai_rewards=train_ai_rewards,
+        device=device,
+    )
+    print("Initializing test set")
+    testset = HumanRewardDataset(
+        features=test_features,
+        human_rewards=test_human_rewards, 
+        ai_rewards=test_ai_rewards,
         device=device,
     )
 
     print("Initializing DataLoaders")
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
-    # testloader = DataLoader(testset, batch_size=batch_size, shuffle=True)
-    return trainloader, train_features, test_features, train_rewards, test_rewards
+    testloader = DataLoader(testset, batch_size=batch_size, shuffle=True)
+    return trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards, train_ai_rewards, test_ai_rewards
 
-def train(model, trainloader, train_features, test_features, train_rewards, test_rewards, model_save_dir, save_every, n_epochs=100, lr=0.001):
+def train(model, trainloader, testloader, train_features, test_features, train_rewards, test_rewards, model_save_dir, save_every=100, n_epochs=100, lr=0.001):
     
     # initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -105,13 +114,13 @@ def train(model, trainloader, train_features, test_features, train_rewards, test
         ###############################################################################
         # Train
         ###############################################################################
-        for step, (features, rewards) in enumerate(trainloader):
+        for step, (features, human_rewards, ai_rewards) in enumerate(trainloader):
             optimizer.zero_grad()
             # TODO - currently only feeding feature in. should be using ai feedback as well
-            predictions = model(features)
+            predictions = torch.flatten(model(features))
             # print("predictions", predictions)
             # print("ground truth", human_rewards)
-            loss = criterion(predictions, rewards[:,None])
+            loss = criterion(predictions, ai_rewards)
             # print("loss", loss.item())
             loss.backward()
             optimizer.step()
@@ -138,8 +147,8 @@ def train(model, trainloader, train_features, test_features, train_rewards, test
             train_errors = np.abs(train_outputs - train_labels)
             test_errors = np.abs(test_outputs - test_labels)
 
-            train_percent_error = train_errors / (train_labels.max() - train_labels.min())
-            test_percent_error = test_errors / (test_labels.max() - test_labels.min())
+            train_percent_error = train_errors / (train_errors.max() - train_errors.min())
+            test_percent_error = test_errors / (test_errors.max() - test_errors.min())
 
             wandb.log({
                 "train_mean_error" : train_errors.mean(),
@@ -172,45 +181,32 @@ def main(args):
     # set seed
     torch.manual_seed(0)
 
-    # make save directory
-    save_dir = os.path.join(args.save_dir, f"{args.agent}_{args.experiment}", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
-    os.makedirs(save_dir, exist_ok=False)
-
     # get labels
     df = pd.read_pickle(args.datafile)
-    # human_rewards = df["human_rewards"]
-    # ai_rewards = df["ai_rewards"]
-    rewards = df[f"{args.agent}_rewards"]
+    human_rewards = df["human_rewards"]
+    ai_rewards = df["ai_rewards"]
 
-    # read features file
-    features = torch.load(args.featurefile)
-    features = torch.flatten(features, start_dim=1)
+    # extract images
+    images = extract_images(input_dir=args.img_dir)
+    print("extracted images")
 
-    # load AI encoder model
-    with open(os.path.join(args.pretrained_encoder_conf)) as f:
-        encoder_conf = json.load(f)
-    encoder_model = LinearModel(
-        input_dim=encoder_conf["input_dim"],
-        hidden_dims=encoder_conf["hidden_dims"],
-        output_dim=encoder_conf["output_dim"],
-        device=args.device,
-    )
-    encoder_model.load_state_dict(torch.load(args.pretrained_encoder_state_dict))
-    encoder_model.to(args.device)
-    print(encoder_model)
-    print("loaded AI encoder model")
-    
-    # encode features
-    with torch.no_grad():
-        encoded_features = encoder_model(features.to(args.device)).cpu()
-        encoded_feature_shape = encoded_features.shape
-        print("encoded features. feature shape ", encoded_feature_shape)
+    # process images for ResNet input
+    preprocess = transforms.Compose([
+        transforms.Resize(256),
+        transforms.CenterCrop(224),
+        transforms.ToTensor(),
+        transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225]),
+    ])
+    processed_images = [preprocess(image) for image in images]
+    processed_images = torch.stack(processed_images).to(args.device)
+    feature_shape = processed_images.shape[1:]
+    print("preprocessed features")
 
     # setup datasets
-    trainloader, train_features, test_features, train_rewards, test_rewards = get_datasets(
-        features=encoded_features,
-        # features=features,
-        rewards=rewards,
+    trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards, train_ai_rewards, test_ai_rewards = get_datasets(
+        features=features,
+        human_rewards=human_rewards,
+        ai_rewards=ai_rewards,
         n_samples_per_epoch=args.n_samples_per_epoch,
         train_ratio=args.train_ratio,
         batch_size=args.batch_size,
@@ -218,26 +214,23 @@ def main(args):
     )
     print("initialized dataloaders")
 
-    # setup reward prediction model to train
-    reward_prediction_model = LinearModel(
-        input_dim=encoded_features.shape[1],
-        # input_dim=features.shape[1],
+    model = LinearModel(
+        input_dim=features.shape[1],
         hidden_dims=args.hidden_dims,
         output_dim=args.output_dim,
         device=args.device,
     )
-    reward_prediction_model = reward_prediction_model.to(args.device)
     print("initialized model")
 
     # setup wandb for logging
+    ai_feedback_dim = str(args.ai_feedback_dim) if args.use_ai_feedback else "none"
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=f"{args.agent}_"+args.experiment+f"hidden_dims{args.hidden_dims}_"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
+        name=args.experiment+f"ai_dim{ai_feedback_dim}_hidden_dims{args.hidden_dims}_"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
         project="reward_predictor_training",
         entity="misoshiruseijin",
         config={
-            "input_dim" : encoded_features.shape[1],
-            # "input_dim" : features.shape[1],
+            "input_dim" : features.shape[1],
             "hidden_dims" : args.hidden_dims,
             "n_hidden_layers" : args.n_hidden_layers,
             "lr" : args.lr,
@@ -250,17 +243,19 @@ def main(args):
 
     # train
     train(
-        model=reward_prediction_model,
+        model=model,
         trainloader=trainloader,
+        testloader=testloader,
         train_features=train_features.to(args.device),
         test_features=test_features.to(args.device),
-        train_rewards=train_rewards.to(args.device),
-        test_rewards=test_rewards.to(args.device),
+        train_rewards=train_ai_rewards.to(args.device),
+        test_rewards=test_ai_rewards.to(args.device),
         n_epochs=args.n_epochs,
         lr=args.lr,
-        model_save_dir=save_dir,
+        model_save_dir=args.save_dir,
         save_every=args.save_every,
     )
+
 
 
 if __name__ == "__main__":
@@ -268,21 +263,20 @@ if __name__ == "__main__":
     parser.add_argument("--img-dir", type=str, default="/home/hayano/all_aesthetic")
     parser.add_argument("--datafile", type=str, default="/home/hayano/all_aesthetic.pkl")
     parser.add_argument("--save-dir", type=str, default="/home/hayano/reward_model_training_results")
-    parser.add_argument("--save-every", type=int, default=200)
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--n-samples-per-epoch", type=int, default=256)
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--batch-size", type=int, default=32)
-    parser.add_argument("--n-epochs", type=int, default=500)
-    parser.add_argument("--lr", type=float, default=1e-6)
-    parser.add_argument("--hidden-dims", nargs="*", type=int, default=[2048]*6)
+    parser.add_argument("--n-epochs", type=int, default=50)
+    parser.add_argument("--lr", type=float, default=1e-8)
+    parser.add_argument("--hidden-dims", nargs="*", type=int, default=[22000]*6)
     parser.add_argument("--n-hidden-layers", type=int, default=5)
     parser.add_argument("--output-dim", type=int, default=1)
-    parser.add_argument("--experiment", type=str, default="reward_prediction")
+    parser.add_argument("--use-ai-feedback", action="store_true")
+    parser.add_argument("--ai-feedback-dim", type=int, default=2048)
+    parser.add_argument("--experiment", type=str, default="ai reward from sd latents")
     parser.add_argument("--featurefile", type=str, default="/home/hayano/all_aesthetic_feature.pt")
-    parser.add_argument("--agent", type=str, help="which agent's rewards to use for encoder training - ai or human")
-    parser.add_argument("--pretrained-encoder-state-dict", type=str, help="path to state dict pt file")
-    parser.add_argument("--pretrained-encoder-conf", type=str, help="path to pretrained encoder config json")
+    parser.add_argument("--save-every", type=int, default=100)
 
     args = parser.parse_args()
     main(args)
