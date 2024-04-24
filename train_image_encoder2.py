@@ -120,7 +120,7 @@ def get_datasets(
 
     return trainloader, testloader
 
-def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir="image_encoder", save_every=10):
+def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n_epochs=100, lr=0.001, model_save_dir="image_encoder", save_every=10):
     
     # initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -145,7 +145,7 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
             negative_out_other = model(negative_feature_other)
             loss_self = criterion_self(anchor_out, positive_out_self, negative_out_self)
             loss_other = criterion_other(anchor_out, positive_out_other, negative_out_other)
-            loss = loss_self + loss_other
+            loss = self_loss_weight * loss_self + other_loss_weight * loss_other
             # print("loss", loss.item())
             loss.backward()
             optimizer.step()
@@ -234,7 +234,7 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
             })
 
         # if (epoch > 0) and (epoch % save_every) == 0:
-        if epoch % save_every == 0:
+        if (epoch > 0) and (epoch % save_every) == 0:
             print("Saving model checkpoint...")
             torch.save(model.state_dict(), os.path.join(model_save_dir, f"epoch{epoch}.pt"))
             print("done")
@@ -248,8 +248,11 @@ def main(args):
     # set seed
     torch.manual_seed(0)
 
+    # experiment time
+    experiment_time = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+
     # create directory to save model 
-    save_dir = os.path.join(args.save_dir, f"{args.agent}", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    save_dir = os.path.join(args.save_dir, f"{args.agent}_SL{args.self_loss_weight}_OL{args.other_loss_weight}", experiment_time)
     os.makedirs(save_dir, exist_ok=False)
     
     if not os.path.exists(args.featurefile):
@@ -375,7 +378,7 @@ def main(args):
     other_agent = "human" if args.agent == "ai" else "ai"
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"{args.agent}Encoderfrom{other_agent}Encoder"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
+        name=args.experiment+f"{args.agent}Encoderfrom{other_agent}Encoder_Lself{args.self_loss_weight}_Lother{args.other_loss_weight}"+experiment_time,
         project="encoder training 2",
         entity="misoshiruseijin",
         config=train_config,
@@ -390,6 +393,8 @@ def main(args):
         lr=args.lr,
         model_save_dir=save_dir,
         save_every=args.save_every,
+        other_loss_weight=args.other_loss_weight,
+        self_loss_weight=args.self_loss_weight,
     )
 
 
@@ -414,6 +419,8 @@ if __name__ == "__main__":
     parser.add_argument("--pretrained-encoder-state-dict", type=str, help="path to state dict pt file")
     parser.add_argument("--pretrained-encoder-conf", type=str, help="path to pretrained encoder config json")
     parser.add_argument("--sampler", type=str, default="default")
+    parser.add_argument("--other-loss-weight", type=float, default=1.0, help="weight of the loss from other encoder")
+    parser.add_argument("--self-loss-weight", type=float, default=1.0, help="weight of the loss from self reward")
 
     args = parser.parse_args()
     main(args)

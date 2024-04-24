@@ -189,6 +189,12 @@ def main(args):
     # set seed
     torch.manual_seed(0)
 
+    # experiment time
+    experiment_time = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+
+    # create directory to save model 
+    save_dir = os.path.join(args.save_dir, f"{args.agent}_SL{args.self_loss_weight}_OL{args.other_loss_weight}", experiment_time)
+    os.makedirs(save_dir, exist_ok=False)
 
     #############################################################################################
     # prepare SD features
@@ -328,7 +334,7 @@ def main(args):
     ############################################################################################## setup wandb for logging
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"_hidden_dims{args.hidden_dims}_"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
+        name=args.experiment+f"_hidden_dims{args.hidden_dims}_"+experiment_time,
         project="reward_error_predictor_training",
         entity="misoshiruseijin",
         config={

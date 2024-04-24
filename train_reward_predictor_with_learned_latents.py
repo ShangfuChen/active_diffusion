@@ -172,8 +172,11 @@ def main(args):
     # set seed
     torch.manual_seed(0)
 
+    # experiment time
+    experiment_time = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+
     # make save directory
-    save_dir = os.path.join(args.save_dir, f"{args.agent}_{args.experiment}", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    save_dir = os.path.join(args.save_dir, f"{args.agent}_{args.experiment}", experiment_time)
     os.makedirs(save_dir, exist_ok=False)
 
     # get labels
@@ -232,7 +235,7 @@ def main(args):
     # setup wandb for logging
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=f"{args.agent}_"+args.experiment+f"hidden_dims{args.hidden_dims}_"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
+        name=f"{args.agent}_"+args.experiment+f"hidden_dims{args.hidden_dims}_"+experiment_time,
         project="reward_predictor_training",
         entity="misoshiruseijin",
         config={
