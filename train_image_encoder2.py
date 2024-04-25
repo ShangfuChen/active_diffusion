@@ -133,6 +133,7 @@ def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n
     # criterion_other = nn.TripletMarginLoss(p=2, margin=1.0)
     criterion_positive_other = nn.MSELoss()
     criterion_negative_other = nn.MSELoss()
+    criterion_other = nn.TripletMarginLoss(p=2, margin=1.0)
 
     n_steps = 0
     start_time = time.time()
@@ -152,7 +153,7 @@ def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n
 
             loss_self = criterion_self(anchor_out, positive_out_self, negative_out_self)
 
-            ######
+            ###### TESTING
             # latent_dists = (anchor_out - other_feature)**2
             # latent_dists_indices = torch.argsort(latent_dists)
             # positive_indices = latent_dists_indices[:int(latent_dists_indices.shape[0]/2)]
@@ -167,24 +168,31 @@ def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n
 
             # loss_other = positive_scale * loss_other_positive - negative_scale * loss_other_negative
             # loss_other = torch.max(loss_other + 0.05, torch.tensor(0.0))
-
             ######
 
+            # loss_other_positive = torch.sqrt(criterion_positive_other(anchor_out[is_positive], other_feature[is_positive]))
+            # loss_other_negative = torch.sqrt(criterion_negative_other(anchor_out[~is_positive], other_feature[~is_positive]))
+            # n_samples = anchor_features.shape[0]
+            # n_positive_samples = is_positive.sum()
+            # n_negative_samples = n_samples - n_positive_samples
 
-            loss_other_positive = torch.sqrt(criterion_positive_other(anchor_out[is_positive], other_feature[is_positive]))
-            loss_other_negative = torch.sqrt(criterion_negative_other(anchor_out[~is_positive], other_feature[~is_positive]))
-            n_samples = anchor_features.shape[0]
-            n_positive_samples = is_positive.sum()
-            n_negative_samples = n_samples - n_positive_samples
-
-            loss_other = torch.max(loss_other_positive - loss_other_negative, torch.tensor(0.0))
-            # loss_other = ((n_positive_samples / n_samples) * loss_other_positive) + torch.max(0.8 - ((n_negative_samples / n_samples) * loss_other_negative), torch.tensor(0.0))
-            # loss_other = torch.max(0.15 - ((n_negative_samples / n_samples) * loss_other_negative), torch.tensor(0.0))
+            # loss_other = torch.max(loss_other_positive - loss_other_negative, torch.tensor(0.0))
 
 
             # loss_other = (n_positive_samples / n_samples) * loss_other_positive - (n_negative_samples / n_samples) * loss_other_negative
             # loss_other = torch.max(loss_other + 0.05, torch.tensor(0.0))
 
+            positive_out_other = torch.zeros_like(anchor_out)
+            positive_out_other[is_positive] = other_feature[is_positive]
+            positive_out_other[~is_positive] = positive_out_self[~is_positive]
+            negative_out_other = torch.zeros_like(anchor_out)
+            negative_out_other[is_positive] = negative_out_self[is_positive]
+            negative_out_other[~is_positive] = other_feature[~is_positive]
+
+            # positive_out_other = model(positive_feature_other)
+            # negative_out_other = model(negative_feature_other)
+            loss_other = criterion_other(anchor_out, positive_out_other, negative_out_other)
+            
             loss = (self_loss_weight * loss_self) + (other_loss_weight * loss_other) 
 
             # print("loss", loss.item())
@@ -198,13 +206,13 @@ def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n
                 "step" : n_steps,
                 "loss_self" : loss_self.item(),
                 "loss_other" : loss_other.item(),
-                "loss_other_positive" : loss_other_positive.item(),
-                "loss_other_negative" : loss_other_negative.item(),
+                # "loss_other_positive" : loss_other_positive.item(),
+                # "loss_other_negative" : loss_other_negative.item(),
                 "loss" : loss.item(),
                 "lr" : lr,
                 "clock_time" : time.time() - start_time,
-                "n_negative_samples" : n_negative_samples,
-                "n_positive_samples" : n_positive_samples,
+                # "n_negative_samples" : n_negative_samples,
+                # "n_positive_samples" : n_positive_samples,
             })
 
         ###############################################################################
@@ -345,7 +353,6 @@ def main(args):
     with torch.no_grad():
         pretrained_encoder_features = pretrained_encoder(features.to(args.device)).cpu()
         print("got encodings from pretrained encoder. latent shape", pretrained_encoder_features.shape)
-    del pretrained_encoder
 
     # setup datasets
     trainloader, testloader = get_datasets(
@@ -362,13 +369,21 @@ def main(args):
     print("initialized dataloaders")
 
     # setup model
-    model = LinearModel(
-        input_dim=features.shape[1],
-        hidden_dims=args.hidden_dims,
-        output_dim=args.output_dim,
-        device=args.device,
-    )
+    if args.init_encoder_with_pretrained:
+        import copy
+        model = copy.deepcopy(pretrained_encoder)
+        print("initialized encoder with pretrained")
+    else:
+        model = LinearModel(
+            input_dim=features.shape[1],
+            hidden_dims=args.hidden_dims,
+            output_dim=args.output_dim,
+            device=args.device,
+        )
+        print("initialized fresh encoder")
     model = model.to(args.device)
+    print(model)
+    del pretrained_encoder
 
     print("Initialized model")
 
@@ -435,6 +450,7 @@ if __name__ == "__main__":
     parser.add_argument("--sampler", type=str, default="default")
     parser.add_argument("--other-loss-weight", type=float, default=1.0, help="weight of the loss from other encoder")
     parser.add_argument("--self-loss-weight", type=float, default=1.0, help="weight of the loss from self reward")
+    parser.add_argument("--init-encoder-with-pretrained", action="store_true")
 
     args = parser.parse_args()
     main(args)
