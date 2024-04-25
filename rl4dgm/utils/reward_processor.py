@@ -32,10 +32,12 @@ class RewardProcessor:
         }
         SIMILARITY_FUNCTIONS = {
             "l2" : self._get_most_similar_l2,
+            "lpips": self._get_most_similar_lpips,
         }
-
+        import lpips
+        self.lpips_distance = lpips.LPIPS(net='alex').eval().cuda() # best forward scores
         assert distance_type in SIMILARITY_FUNCTIONS.keys(), f"distance_type must be one of {SIMILARITY_FUNCTIONS.keys()}. Got {distance_type}."        
-        self.distance_fn = DISTANCE_FUNCTIONS[distance_type]
+        # self.distance_fn = DISTANCE_FUNCTIONS[distance_type]
         self.similarity_fn = SIMILARITY_FUNCTIONS[distance_type]
         # thresholds
         self.distance_thresh = distance_thresh
@@ -92,15 +94,17 @@ class RewardProcessor:
             feedback_interface (rl4dgm.user_feedback_interface.FeedbackInterface) : user feedback interface to query human
         """
         
-        if all_latents is None:
+        # if all_latents is None:
             # if there are no input latents, use raw images
-            features = images 
-        else:
+            # features = images 
+        # else:
             # otherwise, grab relevant components of latents
-            features = all_latents[:, -1, :, :, :].clone().detach().cpu()       
-            noise_latents = all_latents[:, 0, :, :, :].clone().detach().cpu()
-            batch_size = all_latents.shape[0]
-
+        # features = all_latents[:, -1, :, :, :].clone().detach().cpu()
+        features = images.detach().cpu()
+        # features = images
+      
+        noise_latents = all_latents[:, 0, :, :, :].clone().detach().cpu()
+        batch_size = all_latents.shape[0]
         # cast ai_rewards to array
         if isinstance(ai_rewards, list):
             ai_rewards = np.array(ai_rewards)
@@ -121,6 +125,8 @@ class RewardProcessor:
         human_rewards = feedback_interface.query_batch(prompts=prompts, image_batch=images, query_indices=human_query_indices)
 
         self.add_to_human_dataset(
+            # features=features[human_query_indices.copy()],
+            # noise_latents=noise_latents[human_query_indices.copy()],
             features=features[human_query_indices.copy()],
             noise_latents=noise_latents[human_query_indices.copy()],
             human_rewards=human_rewards,
@@ -134,7 +140,10 @@ class RewardProcessor:
 
         if ai_query_indices.shape[0] > 0:
             # get error values from existing data
-            errors = np.array(self.human_dataset["reward_diff"])[representative_sample_indices]
+            try:
+                errors = np.array(self.human_dataset["reward_diff"])[representative_sample_indices]
+            except:
+                breakpoint()
             # get input image indices where AI feedback is trustable. Use AI feedback directly for these samples
             trust_ai_indices = np.where(np.abs(errors) < self.reward_error_thresh)[0]
             trust_ai_indices = ai_query_indices[trust_ai_indices]
@@ -236,6 +245,44 @@ class RewardProcessor:
     ##################################################
     # DISTANCE METRICS #
     ##################################################
+    def _get_most_similar_lpips(self, images1, images2):
+        """
+        Computes L2 distance between each feature in features1 to all features in features2
+        Args:
+            features1 (Tensor) : images
+            features2 (Tensor) : images to compare features in feature1 to
+            nth_smallest (int) : nth_smallest = 1 returns the most similar, n_thsmallest = 2 returns the second most similar, etc.
+        Returns:
+            min_distances (list(float)) : minimum distance between each input (in features1) to the most similar image in features2
+            most_similar_data_indices (list(int)) : indices of most similar images [idx of feature in features2 most similart to features1[0], ....]
+        """
+        print("Calculating LPIPS distances...")
+        torch.cuda.empty_cache()
+        distances = torch.zeros((images1.shape[0], images2.shape[0]))
+        # print("Before loop")
+        # input()
+        with torch.no_grad():
+            for i, im1 in enumerate(images1):
+                im1 = im1.cuda()
+                for j, im2 in enumerate(images2):
+                    im2 = im2.cuda()
+                    distances[i,j] = self.lpips_distance(im1, im2)
+                    del im2
+                del im1
+        # print("After loop")
+        # input()
+        del images1
+        del images2
+        torch.cuda.empty_cache()
+        
+        most_similar = distances.min(axis=1)
+        min_distances = most_similar.values.detach().cpu().numpy()
+        most_similar_data_indices = most_similar.indices.detach().cpu().numpy()
+        del distances
+        torch.cuda.empty_cache()
+        return min_distances, most_similar_data_indices
+        
+
 
     def _get_most_similar_l2(self, features1, features2, nth_smallest=1):
         """
@@ -253,8 +300,9 @@ class RewardProcessor:
         most_similar = distances.min(axis=1)
         min_distances = most_similar.values
         most_similar_data_indices = most_similar.indices
-
         return np.array(min_distances), np.array(most_similar_data_indices)
+
+        # return np.array(min_distances.detach), np.array(most_similar_data_indices)
 
         # nth_smallest_distances = []
         # nth_most_similar_data_indices = []
@@ -287,7 +335,6 @@ class RewardProcessor:
         Returns:
             distances (tensor) : each row is a distance from sample i to all other samples including itself
         """
-
         distances = []
         for f in features1:
             dists = (features2 - f).pow(2).mean(dim=tuple(np.arange(1, features1.dim())))
@@ -328,9 +375,14 @@ class RewardProcessor:
         if self.fixed_query_ratio is not None:
             # order the samples by distance to human dataset and choose (fixed_query_ratio * n_samples) samples with highest distances to query
             max_to_min_dist_indices = np.argsort(np.array(distances))[::-1]
+            
+            # random query
+            random_indices = np.arange(len(distances))
+            np.random.shuffle(random_indices)
             n_human_queries = int(self.fixed_query_ratio * features.shape[0])
-            # breakpoint()
-            human_query_indices = max_to_min_dist_indices[:n_human_queries]
+            # human_query_indices = max_to_min_dist_indices[:n_human_queries]
+            print('RN query')
+            human_query_indices = random_indices[:n_human_queries]
             ai_query_indices = np.setdiff1d(np.arange(distances.shape[0]), human_query_indices)
             representative_sample_indices = np.array(most_similar_data_indices, dtype=int)[ai_query_indices]
             return human_query_indices, ai_query_indices, representative_sample_indices
@@ -342,35 +394,36 @@ class RewardProcessor:
         ai_query_indices = np.setdiff1d(np.arange(distances.shape[0]), candidate_query_indices)
         print("\ncandidate query indices", candidate_query_indices)
         # filter out redundant samples
-        candidate_distances = np.array(self.distance_fn(features[candidate_query_indices], features[candidate_query_indices]))
+        # candidate_distances = np.array(self.distance_fn(features[candidate_query_indices], features[candidate_query_indices]))
         # print("\ndistances among sample batch\n", candidate_distances)
-        to_query = []
-        not_to_query = []
+        # to_query = []
+        # not_to_query = []
         representative_sample_indices = []
 
         if candidate_query_indices.shape[0] > 1:
-            is_similar = candidate_distances < self.distance_thresh
-            priority_indices = np.argsort(is_similar.sum(axis=1))[::-1] # candidate indices ordered from most to least similar samples
+            pass
+            # is_similar = candidate_distances < self.distance_thresh
+            # priority_indices = np.argsort(is_similar.sum(axis=1))[::-1] # candidate indices ordered from most to least similar samples
 
-            for idx in priority_indices:
-                # get indices of similar samples
-                similar_samples = np.where(is_similar[idx])[0]
-                if idx not in to_query and idx not in not_to_query:
-                    to_query.append(idx)
-                    skip_samples = [s for s in similar_samples if s not in not_to_query and not s == idx]
-                    not_to_query += skip_samples
-                    representative_sample_indices += [candidate_query_indices[idx]] * len(skip_samples)
+            # for idx in priority_indices:
+                # # get indices of similar samples
+                # similar_samples = np.where(is_similar[idx])[0]
+                # if idx not in to_query and idx not in not_to_query:
+                    # to_query.append(idx)
+                    # skip_samples = [s for s in similar_samples if s not in not_to_query and not s == idx]
+                    # not_to_query += skip_samples
+                    # representative_sample_indices += [candidate_query_indices[idx]] * len(skip_samples)
                 
-                # print("to_query", to_query)
-                # print("not to query", not_to_query)
-                # breakpoint()
+                # # print("to_query", to_query)
+                # # print("not to query", not_to_query)
+                # # breakpoint()
 
-            human_query_indices = candidate_query_indices[to_query]
-            representative_sample_indices = np.concatenate([
-                np.array(most_similar_data_indices, dtype=int)[ai_query_indices],
-                np.array(representative_sample_indices, dtype=int) + len(self.human_dataset["human_rewards"])
-            ])
-            ai_query_indices = np.concatenate([ai_query_indices, candidate_query_indices[not_to_query]])
+            # human_query_indices = candidate_query_indices[to_query]
+            # representative_sample_indices = np.concatenate([
+                # np.array(most_similar_data_indices, dtype=int)[ai_query_indices],
+                # np.array(representative_sample_indices, dtype=int) + len(self.human_dataset["human_rewards"])
+            # ])
+            # ai_query_indices = np.concatenate([ai_query_indices, candidate_query_indices[not_to_query]])
 
         else:
             human_query_indices = candidate_query_indices

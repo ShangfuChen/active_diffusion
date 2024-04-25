@@ -24,7 +24,7 @@ import datetime
 import pandas as pd
 
 from rl4dgm.models.reward_predictor_model import RewardPredictorModel, RewardPredictorModel2
-from active_diffusion.rl4dgm.models.mydatasets import HumanRewardDataset
+from rl4dgm.models.mydatasets import HumanRewardDataset
 
 
 def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,):
@@ -81,6 +81,8 @@ def get_datasets(features, human_rewards, ai_rewards, n_samples_per_epoch, train
     test_features = features[test_indices]
     train_human_rewards = torch.tensor(human_rewards[train_indices].values)
     test_human_rewards = torch.tensor(human_rewards[test_indices].values)
+    train_ai_rewards = torch.tensor(ai_rewards[train_indices].values)
+    test_ai_rewards = torch.tensor(ai_rewards[test_indices].values)
 
     print("Split into train and test")
     print("Initializing train set")
@@ -101,9 +103,19 @@ def get_datasets(features, human_rewards, ai_rewards, n_samples_per_epoch, train
     print("Initializing DataLoaders")
     trainloader = DataLoader(trainset, batch_size=batch_size, shuffle=True)
     testloader = DataLoader(testset, batch_size=batch_size, shuffle=True)
-    return trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards
+    return trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards, train_ai_rewards, test_ai_rewards
 
-def train(model, trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards, n_epochs=100, lr=0.001):
+def train(model,
+          trainloader,
+          testloader,
+          train_features,
+          test_features,
+          train_human_rewards,
+          test_human_rewards,
+          train_ai_rewards,
+          test_ai_rewards,
+          n_epochs=100,
+          lr=0.001):
     
     # initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
@@ -144,6 +156,8 @@ def train(model, trainloader, testloader, train_features, test_features, train_h
         with torch.no_grad():
             train_outputs = torch.flatten(model(train_features).cpu())
             test_outputs = torch.flatten(model(test_features).cpu())
+            # train_labels = train_human_rewards.cpu()
+            # test_labels = test_human_rewards.cpu()
             train_labels = train_human_rewards.cpu()
             test_labels = test_human_rewards.cpu()
 
@@ -175,8 +189,6 @@ def main(args):
     # set seed
     torch.manual_seed(0)
 
-    # extract images
-    images = extract_images(input_dir=args.img_dir)
 
     # get labels
     df = pd.read_pickle(args.datafile)
@@ -184,32 +196,40 @@ def main(args):
     ai_rewards = df["ai_rewards"]
 
     # set up feature extraction function
-    pretrained_model_path = "runwayml/stable-diffusion-v1-5"
-    pretrained_revision = "main"
-    pipeline = StableDiffusionPipeline.from_pretrained(
-        pretrained_model_path, 
-        revision=pretrained_revision
-    ).to(args.device)
+    # pretrained_model_path = "runwayml/stable-diffusion-v1-5"
+    # pretrained_revision = "main"
+    # pipeline = StableDiffusionPipeline.from_pretrained(
+    #     pretrained_model_path, 
+    #     revision=pretrained_revision
+    # ).to(args.device)
 
-    pipeline.vae.requires_grad_(False)
-    pipeline.text_encoder.requires_grad_(False)
-    pipeline.unet.requires_grad_(False)
-    pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
-    featurizer_fn = pipeline.vae.encoder
+    # pipeline.vae.requires_grad_(False)
+    # pipeline.text_encoder.requires_grad_(False)
+    # pipeline.unet.requires_grad_(False)
+    # pipeline.scheduler = DDIMScheduler.from_config(pipeline.scheduler.config)
+    # featurizer_fn = pipeline.vae.encoder
 
     # get image features in increments
     # features = featurizer_fn(images.float().to(args.device)).cpu()
-    max_n_imgs = 32
-    n_batches = math.ceil(images.shape[0] / max_n_imgs)
-    print("Extracting features...")
-    features = []
-    for i in range(n_batches):
-        print(f"{i+1} / {n_batches}")
-        start_idx = i * max_n_imgs
-        end_idx = images.shape[0] if i == n_batches - 1 else start_idx + max_n_imgs
-        features.append(featurizer_fn(images[start_idx:end_idx].float().to(args.device)).cpu())
-    features = torch.cat(features)
-    print("...done")
+    assert os.path.exists(args.featurefile)
+    if not os.path.exists(args.featurefile):
+        # extract imagesi
+        print("Extracting images...")
+        images = extract_images(input_dir=args.img_dir)
+        max_n_imgs = 32
+        n_batches = math.ceil(images.shape[0] / max_n_imgs)
+        print("Extracting features...")
+        features = []
+        for i in range(n_batches):
+            print(f"{i+1} / {n_batches}")
+            start_idx = i * max_n_imgs
+            end_idx = images.shape[0] if i == n_batches - 1 else start_idx + max_n_imgs
+            features.append(featurizer_fn(images[start_idx:end_idx].float().to(args.device)).cpu())
+        features = torch.cat(features)
+        print("...done")
+        torch.save(features, args.featurefile)
+    else:
+        features = torch.load(args.featurefile)
     # flatten features and get shape (input_dim for reward prediction model)
     features = torch.flatten(features, start_dim=1)
     feature_shape = features.shape
@@ -224,7 +244,8 @@ def main(args):
         print("New feature shape is ", feature_shape)
 
     # setup datasets
-    trainloader, testloader, train_features, test_features, train_human_rewards, test_human_rewards = get_datasets(
+    trainloader, testloader, train_features, test_features, train_human_rewards, \
+        test_human_rewards, train_ai_rewards, test_ai_rewards = get_datasets(
         features=features,
         human_rewards=human_rewards,
         ai_rewards=ai_rewards,
@@ -243,19 +264,19 @@ def main(args):
     #     device=args.device,
     # )
 
-    model = RewardPredictorModel(
-        input_dim=feature_shape[1], 
-        hidden_dims=args.hidden_dims,
-        n_hidden_layers=args.n_hidden_layers,
-        device=args.device,
-    )
-
-    # model = RewardPredictorModel2(
+    # model = RewardPredictorModel(
     #     input_dim=feature_shape[1], 
     #     hidden_dims=args.hidden_dims,
     #     n_hidden_layers=args.n_hidden_layers,
     #     device=args.device,
     # )
+
+    model = RewardPredictorModel2(
+        input_dim=feature_shape[1], 
+        hidden_dims=args.hidden_dims,
+        n_hidden_layers=args.n_hidden_layers,
+        device=args.device,
+    )
     print("initialized model")
 
     # setup wandb for logging
@@ -264,7 +285,7 @@ def main(args):
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
         name=args.experiment+f"ai_dim{ai_feedback_dim}_hidden_dims{args.hidden_dims}_"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
         project="reward_predictor_training",
-        entity="misoshiruseijin",
+        entity="sfchen",
         config={
             "input_dim" : feature_shape[1],
             "hidden_dims" : args.hidden_dims,
@@ -289,6 +310,8 @@ def main(args):
         test_features=test_features.to(args.device), 
         train_human_rewards=train_human_rewards.to(args.device),
         test_human_rewards=test_human_rewards.to(args.device),
+        train_ai_rewards=train_ai_rewards.to(args.device),
+        test_ai_rewards=test_ai_rewards.to(args.device),
         n_epochs=args.n_epochs,
         lr=args.lr,
     )
@@ -296,15 +319,16 @@ def main(args):
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--img-dir", type=str, default="/home/ayanoh/all_aesthetic")
-    parser.add_argument("--datafile", type=str, default="/home/ayanoh/all_aesthetic.pkl")
-    parser.add_argument("--save-dir", type=str, default="/home/ayanoh/reward_model_training_results")
+    parser.add_argument("--img-dir", type=str, default="/home/shangfu/all_aesthetic")
+    parser.add_argument("--datafile", type=str, default="/home/shangfu/all_aesthetic.pkl")
+    parser.add_argument("--featurefile", type=str, default="/home/shangfu/all_aesthetic_feature.pt")
+    parser.add_argument("--save-dir", type=str, default="/home/shangfu/reward_model_training_results")
     parser.add_argument("--device", type=str, default="cuda")
     parser.add_argument("--n-samples-per-epoch", type=int, default=256)
     parser.add_argument("--train-ratio", type=float, default=0.8)
     parser.add_argument("--batch-size", type=int, default=32)
     parser.add_argument("--n-epochs", type=int, default=50)
-    parser.add_argument("--lr", type=float, default=1e-8)
+    parser.add_argument("--lr", type=float, default=1e-7)
     parser.add_argument("--hidden-dims", nargs="*", type=int, default=[22000]*6)
     parser.add_argument("--n-hidden-layers", type=int, default=5)
     parser.add_argument("--use-ai-feedback", action="store_true")

@@ -65,8 +65,8 @@ class RewardPredictorModel2(nn.Module):
     def __init__(
             self,
             input_dim,
-            hidden_dims=[16384, 8192, 4096, 2048, 1024, 512],
-            n_hidden_layers=5,
+            hidden_dims=[8192, 2048, 512],
+            n_hidden_layers=2,
             device=None,
         ):
 
