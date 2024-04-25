@@ -193,7 +193,7 @@ def main(args):
     experiment_time = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
 
     # create directory to save model 
-    save_dir = os.path.join(args.save_dir, f"{args.agent}_SL{args.self_loss_weight}_OL{args.other_loss_weight}", experiment_time)
+    save_dir = os.path.join(args.save_dir, f"{args.agent}_{args.experiment}", experiment_time)
     os.makedirs(save_dir, exist_ok=False)
 
     #############################################################################################

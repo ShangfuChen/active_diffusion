@@ -7,6 +7,25 @@ from torch.distributions import Normal
 
 import time
 
+def get_weighted_sample(weights, k):
+    """
+    Given weights, sample an index with probability proportional to the weights
+    Args:
+        weights
+        k (int) : number of samples to draw
+    """
+    weights_cumsum = torch.cumsum(weights, dim=0)
+    m = weights_cumsum[-1]
+    indices = []
+    i = 0
+    while i < k:
+        rand = m * torch.rand(1).item()
+        idx = torch.searchsorted(sorted_sequence=weights_cumsum, input=rand, side='right')
+        if idx in indices:
+            continue
+        indices.append(idx)
+        i +=1
+    return torch.tensor(indices)
 
 class TripletDataset(Dataset):
     def __init__(
@@ -36,6 +55,7 @@ class TripletDataset(Dataset):
         return self.features.shape[0]
 
     def __getitem__(self, idx):
+
         # print("getitem ", idx)
         # given index, return anchor, positive, and negative samples
         
@@ -59,45 +79,22 @@ class TripletDataset(Dataset):
         ##############################################################################################
         # Sample from gaussian depending on similarity
         ##############################################################################################
-        # elif self.sampling_method == "weighted_gaussian":
-        #     mean = anchor_score
-        #     std = self.sampling_std * self.score_range
-        #     dist = Normal(loc=mean, scale=std) # normal distribution centered around anchor
-        #     prob_density = torch.exp(dist.log_prob(self.scores))
-        #     max_prob = prob_density.max()
-        #     positive_weights = prob_density.clone() # sampling weights for positive samples
-        #     positive_weights[torch.argmax(prob_density).item()] = 0.0 # exclude anchor
-        #     negative_weights = max_prob - prob_density # sampling weights for negative samples
-            
-        #     positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
-        #     negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
-
-        #     positive_feature = self.features[positive_idx]
-        #     negative_feature = self.features[negative_idx]
         elif self.sampling_method == "weighted_gaussian":
-            start_time = time.time()
             mean = anchor_score
             std = self.sampling_std * self.score_range
             dist = Normal(loc=mean, scale=std) # normal distribution centered around anchor
-            print("Guassian initialized", time.time() - start_time)
             prob_density = torch.exp(dist.log_prob(self.scores))
-            print("computed pdf", time.time() - start_time)
             max_prob = prob_density.max()
+            
             positive_weights = prob_density.clone() # sampling weights for positive samples
             positive_weights[torch.argmax(prob_density).item()] = 0.0 # exclude anchor
-            print("got positive weights", time.time() - start_time)
-
             negative_weights = max_prob - prob_density # sampling weights for negative samples
-            print("got negative weights", time.time() - start_time)
             
-            positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
-            print("chose positive idx", time.time() - start_time)
-            
-            negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
-            print("chose negative idx", time.time() - start_time)
+            positive_idx = get_weighted_sample(weights=positive_weights, k=1)
+            negative_idx = get_weighted_sample(weights=negative_weights, k=1)
 
-            positive_feature = self.features[positive_idx]
-            negative_feature = self.features[negative_idx]
+            positive_feature = torch.flatten(self.features[positive_idx], start_dim=0)
+            negative_feature = torch.flatten(self.features[negative_idx], start_dim=0)
 
         return anchor_feature, anchor_score, positive_feature, negative_feature
 
@@ -111,6 +108,7 @@ class DoubleTripletDataset(Dataset):
         device,
         sampling_std_self=0.2, # std of Gaussian when sampling positive and negative samples. ratio of range of scores
         sampling_std_other=0.2, # for choosing positive and negative samples according to encoded features. ratio of range of distances
+        score_percent_error_thresh=0.1, 
         sampling_method="default",
     ):
         self.features = features.to(device)
@@ -122,7 +120,9 @@ class DoubleTripletDataset(Dataset):
         self.score_range_other = scores_other.max() - scores_other.min()
         self.sampling_std_self = sampling_std_self
         self.sampling_std_other = sampling_std_other
+        self.score_percent_error_thresh = score_percent_error_thresh
         self.sampling_method = sampling_method
+        self.device = device
 
         sampling_methods = [
             "default",
@@ -154,6 +154,7 @@ class DoubleTripletDataset(Dataset):
             # sample positive and negative features using self score 
             score_diff = self.scores_self[self.indices] - anchor_score
             most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
+            
             positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
             positive_feature_self = self.features[positive_index]
 
@@ -161,13 +162,13 @@ class DoubleTripletDataset(Dataset):
             negative_feature_self = self.features[negative_index]
 
             # sample positive and negative samples using distance with other encoding
-            score_diff = self.scores_other[self.indices] - anchor_score
-            most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
-            positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
-            positive_feature_other = self.features[positive_index]
+            # score_diff = self.scores_other[self.indices] - anchor_score
+            # most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
+            # positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
+            # positive_feature_other = self.features[positive_index]
 
-            negative_index = random.choice(most_to_least_similar_indices[int(0.9*self.features.shape[0]):])
-            negative_feature_other = self.features[negative_index]
+            # negative_index = random.choice(most_to_least_similar_indices[int(0.9*self.features.shape[0]):])
+            # negative_feature_other = self.features[negative_index]
 
         ##############################################################################################
         # Sample from gaussian depending on similarity
@@ -184,26 +185,36 @@ class DoubleTripletDataset(Dataset):
             positive_weights[torch.argmax(prob_density).item()] = 0.0 # exclude anchor
             negative_weights = max_prob - prob_density # sampling weights for negative samples
             
-            positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
-            negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
+            positive_index = get_weighted_sample(weights=positive_weights, k=1)
+            negative_index = get_weighted_sample(weights=negative_weights, k=1)
 
-            positive_feature_self = self.features[positive_idx]
-            negative_feature_self = self.features[negative_idx]
+            # positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
+            # negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
+
+            positive_feature_self = self.features[positive_index]
+            negative_feature_self = self.features[negative_index]
 
             # sample positive and negative samples using distance with other encoding
-            prob_density = torch.exp(dist.log_prob(self.scores_other))
-            max_prob = prob_density.max()
-            positive_weights = prob_density.clone() # sampling weights for positive samples
-            positive_weights[torch.argmax(prob_density).item()] = 0.0 # exclude anchor
-            negative_weights = max_prob - prob_density # sampling weights for negative samples
+            # prob_density = torch.exp(dist.log_prob(self.scores_other))
+            # max_prob = prob_density.max()
+            # positive_weights = prob_density.clone() # sampling weights for positive samples
+            # positive_weights[torch.argmax(prob_density).item()] = 0.0 # exclude anchor
+            # negative_weights = max_prob - prob_density # sampling weights for negative samples
             
-            positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
-            negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
+            # positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
+            # negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
 
-            positive_feature_other = self.features[positive_idx]
-            negative_feature_other = self.features[negative_idx]
+            # positive_feature_other = self.features[positive_idx]
+            # negative_feature_other = self.features[negative_idx]
 
-        return anchor_feature, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other
+        # get sample from other encoder
+        other_feature = self.encoded_features[idx]
+        score_diff = anchor_score - self.scores_other[idx]
+        is_positive = (torch.abs(score_diff) / self.score_range_self < self.score_percent_error_thresh).item()
+
+        return anchor_feature, anchor_score, positive_feature_self, negative_feature_self, other_feature, is_positive#, self.scores_other[idx]
+
+        # return anchor_feature, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other
 
 
 class FeatureLabelDataset(Dataset):

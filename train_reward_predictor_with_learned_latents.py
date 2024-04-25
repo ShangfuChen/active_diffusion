@@ -201,7 +201,7 @@ def main(args):
     encoder_model.load_state_dict(torch.load(args.pretrained_encoder_state_dict))
     encoder_model.to(args.device)
     print(encoder_model)
-    print("loaded AI encoder model")
+    print(f"loaded {args.agent} encoder model")
     
     # encode features
     with torch.no_grad():

@@ -122,10 +122,17 @@ def get_datasets(
 
 def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n_epochs=100, lr=0.001, model_save_dir="image_encoder", save_every=10):
     
+    loaders = {
+        "train" : trainloader,
+        "test" : testloader,
+    }
+
     # initialize optimizer and loss function
     optimizer = torch.optim.Adam(model.parameters(), lr=lr)
     criterion_self = nn.TripletMarginLoss(p=2, margin=1.0) 
-    criterion_other = nn.TripletMarginLoss(p=2, margin=1.0)
+    # criterion_other = nn.TripletMarginLoss(p=2, margin=1.0)
+    criterion_positive_other = nn.MSELoss()
+    criterion_negative_other = nn.MSELoss()
 
     n_steps = 0
     start_time = time.time()
@@ -136,16 +143,50 @@ def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n
         # Train
         ###############################################################################
         print("Training...")
-        for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other) in enumerate(trainloader):
+        # for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other) in enumerate(trainloader):
+        for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, other_feature, is_positive) in enumerate(trainloader):
             optimizer.zero_grad()
             anchor_out = model(anchor_features)
             positive_out_self = model(positive_feature_self)
             negative_out_self = model(negative_feature_self)
-            positive_out_other = model(positive_feature_other)
-            negative_out_other = model(negative_feature_other)
+
             loss_self = criterion_self(anchor_out, positive_out_self, negative_out_self)
-            loss_other = criterion_other(anchor_out, positive_out_other, negative_out_other)
-            loss = self_loss_weight * loss_self + other_loss_weight * loss_other
+
+            ######
+            # latent_dists = (anchor_out - other_feature)**2
+            # latent_dists_indices = torch.argsort(latent_dists)
+            # positive_indices = latent_dists_indices[:int(latent_dists_indices.shape[0]/2)]
+            # negative_indices = latent_dists_indices[int(latent_dists_indices.shape[0]/2):]
+            # loss_other_positive = criterion_positive_other(anchor_out[positive_indices], other_feature[positive_indices])
+            # loss_other_negative = criterion_negative_other(anchor_out[negative_indices], other_feature[negative_indices])
+            # n_samples = anchor_features.shape[0]
+            # n_positive_samples = positive_indices.shape[0]
+            # n_negative_samples = negative_indices.shape[0]
+            # positive_scale = n_positive_samples / n_samples
+            # negative_scale = n_negative_samples / n_samples
+
+            # loss_other = positive_scale * loss_other_positive - negative_scale * loss_other_negative
+            # loss_other = torch.max(loss_other + 0.05, torch.tensor(0.0))
+
+            ######
+
+
+            loss_other_positive = torch.sqrt(criterion_positive_other(anchor_out[is_positive], other_feature[is_positive]))
+            loss_other_negative = torch.sqrt(criterion_negative_other(anchor_out[~is_positive], other_feature[~is_positive]))
+            n_samples = anchor_features.shape[0]
+            n_positive_samples = is_positive.sum()
+            n_negative_samples = n_samples - n_positive_samples
+
+            loss_other = torch.max(loss_other_positive - loss_other_negative, torch.tensor(0.0))
+            # loss_other = ((n_positive_samples / n_samples) * loss_other_positive) + torch.max(0.8 - ((n_negative_samples / n_samples) * loss_other_negative), torch.tensor(0.0))
+            # loss_other = torch.max(0.15 - ((n_negative_samples / n_samples) * loss_other_negative), torch.tensor(0.0))
+
+
+            # loss_other = (n_positive_samples / n_samples) * loss_other_positive - (n_negative_samples / n_samples) * loss_other_negative
+            # loss_other = torch.max(loss_other + 0.05, torch.tensor(0.0))
+
+            loss = (self_loss_weight * loss_self) + (other_loss_weight * loss_other) 
+
             # print("loss", loss.item())
             loss.backward()
             optimizer.step()
@@ -157,9 +198,13 @@ def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n
                 "step" : n_steps,
                 "loss_self" : loss_self.item(),
                 "loss_other" : loss_other.item(),
+                "loss_other_positive" : loss_other_positive.item(),
+                "loss_other_negative" : loss_other_negative.item(),
                 "loss" : loss.item(),
                 "lr" : lr,
                 "clock_time" : time.time() - start_time,
+                "n_negative_samples" : n_negative_samples,
+                "n_positive_samples" : n_positive_samples,
             })
 
         ###############################################################################
@@ -167,71 +212,39 @@ def train(model, trainloader, testloader, self_loss_weight, other_loss_weight, n
         ###############################################################################
         print("Evaluating...")
         with torch.no_grad():
-            # trainset
-            anchor_positive_self = []
-            anchor_negative_self = []
-            anchor_positive_other = []
-            anchor_negative_other = []
-
-            for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other) in enumerate(trainloader):
-                # get anchor-positive and anchor-negative distances
-                anchor_out = model(anchor_features)
-                positive_out_self = model(positive_feature_self)
-                negative_out_self = model(negative_feature_self)
-                positive_out_other = model(positive_feature_other)
-                negative_out_other = model(negative_feature_other)
-
-                anchor_positive_dist_self = torch.linalg.norm(anchor_out - positive_out_self, dim=1)
-                anchor_positive_self.append(anchor_positive_dist_self.mean().item())
-                anchor_negative_dist_self = torch.linalg.norm(anchor_out - negative_out_self, dim=1)
-                anchor_negative_self.append(anchor_negative_dist_self.mean().item())
-
-                anchor_positive_dist_other = torch.linalg.norm(anchor_out - positive_out_other, dim=1)
-                anchor_positive_other.append(anchor_positive_dist_other.mean().item())
-                anchor_negative_dist_other = torch.linalg.norm(anchor_out - negative_out_other, dim=1)
-                anchor_negative_other.append(anchor_negative_dist_other.mean().item())
+            for loader_type, loader in loaders.items():
                 
-            wandb.log({
-                "train_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
-                "train_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
-                "train_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
-                "train_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
-                "train_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
-                "train_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
-            })
+                anchor_positive_self = []
+                anchor_negative_self = []
+                anchor_positive_other = []
+                anchor_negative_other = []
 
-            # testset
-            anchor_positive_self = []
-            anchor_negative_self = []
-            anchor_positive_other = []
-            anchor_negative_other = []
+                for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, other_feature, is_positive) in enumerate(loader):
+                    # get anchor-positive and anchor-negative distances
+                    anchor_out = model(anchor_features)
+                    positive_out_self = model(positive_feature_self)
+                    negative_out_self = model(negative_feature_self)
+                    
+                    # positive_out_other = model(positive_feature_other)
+                    # negative_out_other = model(negative_feature_other)
+                    anchor_positive_dist_self = torch.linalg.norm(anchor_out - positive_out_self, dim=1)
+                    anchor_positive_self.append(anchor_positive_dist_self.mean().item())
+                    anchor_negative_dist_self = torch.linalg.norm(anchor_out - negative_out_self, dim=1)
+                    anchor_negative_self.append(anchor_negative_dist_self.mean().item())
 
-            for step, (anchor_features, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other) in enumerate(testloader):
-                # get anchor-positive and anchor-negative distances
-                anchor_out = model(anchor_features)
-                positive_out_self = model(positive_feature_self)
-                negative_out_self = model(negative_feature_self)
-                positive_out_other = model(positive_feature_other)
-                negative_out_other = model(negative_feature_other)
-
-                anchor_positive_dist_self = torch.linalg.norm(anchor_out - positive_out_self, dim=1)
-                anchor_positive_self.append(anchor_positive_dist_self.mean().item())
-                anchor_negative_dist_self = torch.linalg.norm(anchor_out - negative_out_self, dim=1)
-                anchor_negative_self.append(anchor_negative_dist_self.mean().item())
-
-                anchor_positive_dist_other = torch.linalg.norm(anchor_out - positive_out_other, dim=1)
-                anchor_positive_other.append(anchor_positive_dist_other.mean().item())
-                anchor_negative_dist_other = torch.linalg.norm(anchor_out - negative_out_other, dim=1)
-                anchor_negative_other.append(anchor_negative_dist_other.mean().item())
-                
-            wandb.log({
-                "test_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
-                "test_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
-                "test_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
-                "test_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
-                "test_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
-                "test_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
-            })
+                    anchor_positive_dist_other = torch.linalg.norm(anchor_out[is_positive] - other_feature[is_positive], dim=1)
+                    anchor_positive_other.append(anchor_positive_dist_other.mean().item())
+                    anchor_negative_dist_other = torch.linalg.norm(anchor_out[~is_positive] - other_feature[~is_positive], dim=1)
+                    anchor_negative_other.append(anchor_negative_dist_other.mean().item())
+                    
+                wandb.log({
+                    f"{loader_type}_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
+                    f"{loader_type}_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
+                    f"{loader_type}_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
+                    f"{loader_type}_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
+                    f"{loader_type}_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
+                    f"{loader_type}_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
+                })
 
         # if (epoch > 0) and (epoch % save_every) == 0:
         if (epoch > 0) and (epoch % save_every) == 0:
@@ -252,7 +265,7 @@ def main(args):
     experiment_time = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
 
     # create directory to save model 
-    save_dir = os.path.join(args.save_dir, f"{args.agent}_SL{args.self_loss_weight}_OL{args.other_loss_weight}", experiment_time)
+    save_dir = os.path.join(args.save_dir, f"{args.agent}_{args.experiment}", experiment_time)
     os.makedirs(save_dir, exist_ok=False)
     
     if not os.path.exists(args.featurefile):
@@ -332,6 +345,7 @@ def main(args):
     with torch.no_grad():
         pretrained_encoder_features = pretrained_encoder(features.to(args.device)).cpu()
         print("got encodings from pretrained encoder. latent shape", pretrained_encoder_features.shape)
+    del pretrained_encoder
 
     # setup datasets
     trainloader, testloader = get_datasets(
@@ -378,7 +392,7 @@ def main(args):
     other_agent = "human" if args.agent == "ai" else "ai"
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"{args.agent}Encoderfrom{other_agent}Encoder_Lself{args.self_loss_weight}_Lother{args.other_loss_weight}"+experiment_time,
+        name=args.experiment+f"Encoder_LS{args.self_loss_weight}_LO{args.other_loss_weight}"+experiment_time,
         project="encoder training 2",
         entity="misoshiruseijin",
         config=train_config,

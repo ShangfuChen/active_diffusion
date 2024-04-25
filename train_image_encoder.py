@@ -50,7 +50,7 @@ def extract_images(input_dir=None, image_paths=None, max_images_per_epoch=None,)
     return images
     # return torch.stack(images)
 
-def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size, device, sampler):
+def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size, device, sampler, gaussian_std_percent):
     """
     Create train and test datasets
     Args:
@@ -86,6 +86,7 @@ def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size,
         device=device,
         is_train=True,
         sampling_method=sampler,
+        sampling_std=gaussian_std_percent,
     )
 
     print("Initializing test set")
@@ -95,6 +96,7 @@ def get_datasets(features, scores, n_samples_per_epoch, train_ratio, batch_size,
         device=device,
         is_train=False,
         sampling_method=sampler,
+        sampling_std=gaussian_std_percent,
     )
 
     print("Initializing DataLoaders")
@@ -181,8 +183,7 @@ def train(model, trainloader, testloader, n_epochs=100, lr=0.001, model_save_dir
                 "test_dist_diff" : (np.array(anchor_negative) - np.array(anchor_positive)).mean(),
             })
 
-        # if (epoch > 0) and (epoch % save_every) == 0:
-        if epoch % save_every == 0:
+        if (epoch > 0) and (epoch % save_every) == 0:
             print("Saving model checkpoint...")
             torch.save(model.state_dict(), os.path.join(model_save_dir, f"epoch{epoch}.pt"))
             print("done")
@@ -196,8 +197,11 @@ def main(args):
     # set seed
     torch.manual_seed(0)
 
+    # experiment time
+    experiment_time = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
+
     # create directory to save model 
-    save_dir = os.path.join(args.save_dir, f"{args.agent}_{args.experiment}"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    save_dir = os.path.join(args.save_dir, f"{args.agent}_{args.experiment}"+experiment_time)
     os.makedirs(save_dir, exist_ok=False)
     
     if not os.path.exists(args.featurefile):
@@ -263,6 +267,7 @@ def main(args):
         batch_size=args.batch_size,
         device=args.device,
         sampler=args.sampler,
+        gaussian_std_percent=args.gaussian_std_percent,
     )
     print("initialized dataloaders")
 
@@ -297,8 +302,8 @@ def main(args):
 
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"{args.agent}encoder"+datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        project="encoder training",
+        name=args.experiment+f"_hidden_dims{args.hidden_dims}_"+experiment_time,
+        project=f"encoder training",
         entity="misoshiruseijin",
         config=train_config,
     )
@@ -334,6 +339,7 @@ if __name__ == "__main__":
     parser.add_argument("--featurefile", type=str, default="/home/hayano/all_aesthetic_feature.pt")
     parser.add_argument("--agent", type=str, default="ai", help="which agent's rewards to use for encoder training - ai or human")
     parser.add_argument("--sampler", type=str, default="default")
+    parser.add_argument("--gaussian-std-percent", type=float, default=0.1)
 
     args = parser.parse_args()
     main(args)
