@@ -161,15 +161,6 @@ class DoubleTripletDataset(Dataset):
             negative_index = random.choice(most_to_least_similar_indices[int(0.9*self.features.shape[0]):])
             negative_feature_self = self.features[negative_index]
 
-            # sample positive and negative samples using distance with other encoding
-            # score_diff = self.scores_other[self.indices] - anchor_score
-            # most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
-            # positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
-            # positive_feature_other = self.features[positive_index]
-
-            # negative_index = random.choice(most_to_least_similar_indices[int(0.9*self.features.shape[0]):])
-            # negative_feature_other = self.features[negative_index]
-
         ##############################################################################################
         # Sample from gaussian depending on similarity
         ##############################################################################################
@@ -194,28 +185,12 @@ class DoubleTripletDataset(Dataset):
             positive_feature_self = self.features[positive_index]
             negative_feature_self = self.features[negative_index]
 
-            # sample positive and negative samples using distance with other encoding
-            # prob_density = torch.exp(dist.log_prob(self.scores_other))
-            # max_prob = prob_density.max()
-            # positive_weights = prob_density.clone() # sampling weights for positive samples
-            # positive_weights[torch.argmax(prob_density).item()] = 0.0 # exclude anchor
-            # negative_weights = max_prob - prob_density # sampling weights for negative samples
-            
-            # positive_idx = random.choices(population=self.indices, weights=positive_weights, k=1)[0].item()
-            # negative_idx = random.choices(population=self.indices, weights=negative_weights, k=1)[0].item()
-
-            # positive_feature_other = self.features[positive_idx]
-            # negative_feature_other = self.features[negative_idx]
-
         # get sample from other encoder
         other_feature = self.encoded_features[idx]
         score_diff = anchor_score - self.scores_other[idx]
         is_positive = (torch.abs(score_diff) / self.score_range_self < self.score_percent_error_thresh).item()
 
         return anchor_feature, anchor_score, positive_feature_self, negative_feature_self, other_feature, is_positive#, self.scores_other[idx]
-
-        # return anchor_feature, anchor_score, positive_feature_self, negative_feature_self, positive_feature_other, negative_feature_other
-
 
 class FeatureLabelDataset(Dataset):
     def __init__(
@@ -233,7 +208,32 @@ class FeatureLabelDataset(Dataset):
     
     def __getitem__(self, idx):
         return self.features[idx], self.labels[idx]
+
+class FeatureDoubleLabelDataset(Dataset):
+    def __init__(
+        self,
+        features,
+        agent1_labels, # labels from agent 1
+        agent2_labels, # labels from agent 2
+        device,
+    ):
+        super(FeatureLabelDataset, self).__init__()
+        self.features = features.float().to(device)
+        self.agent1_labels = agent1_labels.float().to(device)
+        self.agent2_labels = agent2_labels.float().to(device)
+
+        self.agent1_label_max = self.agent1_labels.max()
+        self.agent1_label_min = self.agent1_labels.min()
+        self.agent1_label_max = self.agent2_labels.max()
+        self.agent1_label_min = self.agent2_labels.min()
+
+    def __len__(self):
+        return self.features.shape[0]
     
+    def __getitem__(self, idx):
+        return self.features[idx], self.agent1_labels[idx], self.agent2_labels[idx]
+    
+
 class HumanRewardDataset(Dataset):
     def __init__(
         self,

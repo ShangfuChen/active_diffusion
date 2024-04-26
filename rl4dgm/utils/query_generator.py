@@ -7,7 +7,40 @@ import random
 import numpy as np
 import torch
 
-class QueryGenerator:
+class EvaluationQueryGenerator:
+    def __init__(self):
+        self.QUERY_ALGORITHMS = {
+            "random" : self._random_queries,
+            "all" : self._all_queries,
+        }
+
+    def get_query_indices(self, indices, query_type, n_queries=None, **kwargs):
+        """
+        Return array of indices to query according to the specified query_type
+        Args:
+            query_type (str) : how to choose the queries
+            indices (array) : possible choices for query
+            n_queries (int) : number of indices to choose 
+        """
+        assert query_type in self.QUERY_ALGORITHMS.keys(), f"query_type must be one of {self.QUERY_ALGORITHMS.keys()}. Got {query_type}."
+        assert n_queries <= indices.shape[0], f"Requested number of queries ({n_queries}) is larger than the number of indices provided ({indices.shape[0]})."
+        
+        return self.QUERY_ALGORITHMS[query_type](indices, n_queries, **kwargs)
+
+    def _random_queries(self, indices, n_queries, **kwargs):
+        """
+        Given an array of indices, return n_queries randomly selected indices
+        """
+        queries = np.random.choice(indices, size=n_queries, replace=False)
+        return queries
+    
+    def _all_queries(self, indices, n_queries=None, **kwargs):
+        """
+        Return all indices
+        """
+        return indices
+
+class PreferenceQueryGenerator:
     def __init__(self):
         self.QUERY_ALGORITHMS = {
             "random" : self._random_query_algorithm,

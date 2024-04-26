@@ -334,7 +334,7 @@ def main(args):
     ############################################################################################## setup wandb for logging
     wandb.init(
         # name=datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"),
-        name=args.experiment+f"_hidden_dims{args.hidden_dims}_"+experiment_time,
+        name=args.experiment+experiment_time,
         project="reward_error_predictor_training",
         entity="misoshiruseijin",
         config={
