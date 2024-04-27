@@ -9,7 +9,7 @@ from datasets import load_from_disk, load_dataset, Dataset
 from hydra.utils import instantiate
 from omegaconf import II
 
-from trainer.datasetss.base_dataset import BaseDataset, BaseDatasetConfig
+from PickScore.trainer.datasetss.base_dataset import BaseDataset, BaseDatasetConfig
 
 logger = get_logger(__name__)
 

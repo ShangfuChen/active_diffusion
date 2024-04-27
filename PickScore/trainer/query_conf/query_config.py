@@ -8,4 +8,4 @@ class QueryConfig:
     # query method
     query_type : str = "random"
     # number of feedbacks per query
-    n_feedbacks_per_query : int = 32
+    n_feedbacks_per_query : int = 20

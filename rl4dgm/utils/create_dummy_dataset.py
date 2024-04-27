@@ -13,7 +13,7 @@ import argparse
 from datetime import datetime
 import shutil
 
-from rl4dgm.utils.query_generator import QueryGenerator
+from rl4dgm.utils.query_generator import PreferenceQueryGenerator
 from rl4dgm.utils.generate_images import ImageGenerator
 
 NUM_ITERS_TO_RUN = 3
@@ -124,7 +124,7 @@ def generate_dummy_icecream_dataset(model, data_save_dir, n_images, n_queries, d
     preference_df = create_pickapic_dataframe()
 
     # generate random queries
-    query_generator = QueryGenerator()
+    query_generator = PreferenceQueryGenerator()
     queries, img_paths = query_generator.generate_queries(image_directories=img_dirs, query_algorithm="random", n_queries=100)
     for query in queries:
         im0 = img_paths[query[0]]
@@ -166,7 +166,7 @@ def generate_dummy_cat_dataset(model, data_save_dir, n_images, n_queries, datafi
     preference_df = create_pickapic_dataframe()
 
     # generate random queries
-    query_generator = QueryGenerator()
+    query_generator = PreferenceQueryGenerator()
     queries, img_paths = query_generator.generate_queries(images=img_dirs, query_algorithm="random", n_queries=100)
     for query in queries:
         im0 = img_paths[query[0]]
@@ -216,7 +216,7 @@ def generate_dummy_cat_random_ranked_dataset(model, data_save_dir, n_images, n_q
     preference_df = create_pickapic_dataframe()
 
     # generate queries
-    query_generator = QueryGenerator()
+    query_generator = PreferenceQueryGenerator()
     queries, img_paths = query_generator.generate_queries(images=[img_save_dir], query_algorithm="ordered", n_queries=100)
     for i, query in enumerate(queries):
         im0 = img_paths[query[0]]

@@ -17,7 +17,7 @@ from accelerate.utils.dataclasses import BaseEnum, LoggerType, DynamoBackend
 from omegaconf import DictConfig, OmegaConf, II
 from tqdm import tqdm
 
-from trainer.accelerators.utils import get_nvidia_smi_gpu_memory_stats_str, print_config, _flatten_dict
+from PickScore.trainer.accelerators.utils import get_nvidia_smi_gpu_memory_stats_str, print_config, _flatten_dict
 
 logger = get_logger(__name__)
 

@@ -48,25 +48,26 @@ class DDPOTrainConfig:
     ###### Sampling ######
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    sample_num_steps: int = 20
+    # sample_num_steps: int = 20
+    sample_num_steps: int = 5
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
     sample_eta: float = 1.0
     # classifier-free guidance weight. 1.0 is no guidance.
     sample_guidance_scale: float = 5.0
     # batch size (per GPU!) to use for sampling.
-    # sample_batch_size: int = 8
-    sample_batch_size: int = 32
+    sample_batch_size: int = 4
+    # sample_batch_size: int = 2
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    # sample_num_batches_per_epoch: int = 2
-    sample_num_batches_per_epoch: int = 8
+    sample_num_batches_per_epoch: int = 16
+    # sample_num_batches_per_epoch: int = 8
+    # sample_num_batches_per_epoch: int = 32
     
     ###### Training ######
     # config.train = train = ml_collections.ConfigDict()
     # batch size (per GPU!) to use for training.
-    # train_batch_size: int = 1
-    train_batch_size: int = 4
+    train_batch_size: int = 1
     # whether to use the 8bit Adam optimizer from bitsandbytes.
     train_use_8bit_adam: bool = False
     # learning rate.
@@ -80,8 +81,8 @@ class DDPOTrainConfig:
     # Adam epsilon.
     train_adam_epsilon: float = 1e-8
     # number of gradient accumulation steps. the effective batch size is `batch_size * num_gpus *
-    # gradient_accumulation_steps`.
-    train_gradient_accumulation_steps: int = 16
+    # gradient_accumulation_steps`
+    train_gradient_accumulation_steps: int = 8
     # maximum gradient norm for gradient clipping.
     train_max_grad_norm: float = 1.0
     # number of inner epochs per outer epoch. each inner epoch is one iteration through the data collected during one
@@ -98,7 +99,7 @@ class DDPOTrainConfig:
     # timesteps for each sample. this will speed up training but reduce the accuracy of policy gradient estimates.
     train_timestep_fraction: float = 1.0
     train_num_update: int = 5
-
+    normalization: bool = True
     ###### Prompt Function ######
     # prompt function to use. see `prompts.py` for available prompt functions.
     # prompt_fn: str = "simple_animals"

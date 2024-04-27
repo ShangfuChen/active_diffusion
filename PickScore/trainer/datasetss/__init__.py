@@ -1,7 +1,7 @@
 from hydra.core.config_store import ConfigStore
 
-from trainer.datasetss.clip_hf_dataset import CLIPHFDatasetConfig, PickapicOnlySomeDatasetConfig
-from trainer.datasetss.my_hf_dataset import MyHFDatasetConfig
+from PickScore.trainer.datasetss.clip_hf_dataset import CLIPHFDatasetConfig, PickapicOnlySomeDatasetConfig
+from PickScore.trainer.datasetss.my_hf_dataset import MyHFDatasetConfig
 
 cs = ConfigStore.instance()
 cs.store(group="dataset", name="clip", node=CLIPHFDatasetConfig)

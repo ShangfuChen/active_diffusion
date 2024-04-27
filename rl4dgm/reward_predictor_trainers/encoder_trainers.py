@@ -7,8 +7,7 @@ import numpy as np
 import torch 
 from torch import nn
 from torch.utils.data import DataLoader
-
-import wandb
+from accelerate import Accelerator
 
 from rl4dgm.models.mydatasets import TripletDataset, DoubleTripletDataset
 from rl4dgm.models.my_models import LinearModel
@@ -21,8 +20,10 @@ class TripletEncoderTrainer:
             self, 
             config_dict: dict,
             device,
+            accelerator: Accelerator,
             trainset: TripletDataset = None,
             testset: TripletDataset = None, 
+            name="triplet_encoder",
         ):
         """
         Args:
@@ -58,6 +59,8 @@ class TripletEncoderTrainer:
             json.dump(config_dict, f)
             print("saved TripletEncoderTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
         
+        self.name = name
+        self.accelerator = accelerator
         self.device = device
         self.model = LinearModel(
             input_dim=config_dict["input_dim"],
@@ -111,7 +114,6 @@ class TripletEncoderTrainer:
             self.n_total_epochs += 1
             running_losses = []
             print("TripletEncoder training epoch", epoch)
-
             for step, (anchor_features, _, positive_features, negative_features) in enumerate(self.trainloader):
                 self.optimizer.zero_grad()
                 anchor_out = self.model(anchor_features)
@@ -125,12 +127,12 @@ class TripletEncoderTrainer:
                 n_steps += 1
                 self.n_total_epochs += 1
 
-                wandb.log({
-                    "epoch" : self.n_total_epochs,
-                    "step" : self.n_total_epochs,
-                    "loss" : loss.item(),
-                    "lr" : self.config["lr"],
-                    "clock_time" : time.time() - self.start_time,
+                self.accelerator.log({
+                    f"{self.name}_epoch" : self.n_total_epochs,
+                    f"{self.name}_step" : self.n_total_epochs,
+                    f"{self.name}_loss" : loss.item(),
+                    f"{self.name}_lr" : self.config["lr"],
+                    f"{self.name}_clock_time" : time.time() - self.start_time,
                 })
             
             # save checkpoint
@@ -155,10 +157,10 @@ class TripletEncoderTrainer:
                     anchor_negative_dist = torch.linalg.norm(anchor_out - negative_out, dim=1)
                     anchor_negative.append(anchor_negative_dist.mean().item())
                     
-                wandb.log({
-                    f"{dataset_type}_anchor_negative_dist" : np.array(anchor_negative).mean(),
-                    f"{dataset_type}_anchor_positive_dist" : np.array(anchor_positive).mean(),
-                    f"{dataset_type}_dist_diff" : (np.array(anchor_negative) - np.array(anchor_positive)).mean(),
+                self.accelerator.log({
+                    f"{self.name}_{dataset_type}_anchor_negative_dist" : np.array(anchor_negative).mean(),
+                    f"{self.name}_{dataset_type}_anchor_positive_dist" : np.array(anchor_positive).mean(),
+                    f"{self.name}_{dataset_type}_dist_diff" : (np.array(anchor_negative) - np.array(anchor_positive)).mean(),
                 })
 
     
@@ -169,8 +171,11 @@ class DoubleTripletEncoderTrainer:
     def __init__(
             self, 
             config_dict: dict,
+            device,
+            accelerator: Accelerator,
             trainset: DoubleTripletDataset = None,
             testset: DoubleTripletDataset = None, 
+            name="double_tiplet_encoder",
         ):
         """
         Args:
@@ -209,6 +214,9 @@ class DoubleTripletEncoderTrainer:
             json.dump(config_dict, f)
             print("saved DoubleTripletEncoderTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
         
+        self.name = name
+        self.accelerator = accelerator
+        self.device = device
         self.model = LinearModel(
             input_dim=config_dict["input_dim"],
             hidden_dims=config_dict["hidden_dims"],
@@ -264,7 +272,7 @@ class DoubleTripletEncoderTrainer:
             running_losses = []
             print("TripletEncoder training epoch", epoch)
 
-            for step, (anchor_features, _, positive_feature_self, negative_feature_self, other_feature, is_positive) in enumerate(trainloader):
+            for step, (anchor_features, _, positive_feature_self, negative_feature_self, other_feature, is_positive) in enumerate(self.trainloader):
                 self.optimizer.zero_grad()
                 anchor_out = self.model(anchor_features)
                 
@@ -298,14 +306,14 @@ class DoubleTripletEncoderTrainer:
                 n_steps += 1
                 self.n_total_steps += 1
 
-                wandb.log({
-                    "epoch" : self.n_total_epochs,
-                    "step" : self.n_total_steps,
-                    "loss_self" : loss_self.item(),
-                    "loss_other" : loss_other.item(),
-                    "loss" : loss.item(),
-                    "lr" : self.config["lr"],
-                    "clock_time" : time.time() - self.start_time,
+                self.accelerator.log({
+                    f"{self.name}_epoch" : self.n_total_epochs,
+                    f"{self.name}_step" : self.n_total_steps,
+                    f"{self.name}_loss_self" : loss_self.item(),
+                    f"{self.name}_loss_other" : loss_other.item(),
+                    f"{self.name}_loss" : loss.item(),
+                    f"{self.name}_lr" : self.config["lr"],
+                    f"{self.name}_clock_time" : time.time() - self.start_time,
                 })
 
             # save checkpoint
@@ -339,13 +347,13 @@ class DoubleTripletEncoderTrainer:
                     anchor_negative_dist_other = torch.linalg.norm(anchor_out[~is_positive] - other_feature[~is_positive], dim=1)
                     anchor_negative_other.append(anchor_negative_dist_other.mean().item())
                     
-                wandb.log({
-                    f"{dataset_type}_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
-                    f"{dataset_type}_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
-                    f"{dataset_type}_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
-                    f"{dataset_type}_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
-                    f"{dataset_type}_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
-                    f"{dataset_type}_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
+                self.accelerator.log({
+                    f"{self.name}_{dataset_type}_anchor_positive_dist_self" : np.array(anchor_positive_self).mean(),
+                    f"{self.name}_{dataset_type}_anchor_negative_dist_self" : np.array(anchor_negative_self).mean(),
+                    f"{self.name}_{dataset_type}_dist_diff_self" : (np.array(anchor_negative_self) - np.array(anchor_positive_self)).mean(),
+                    f"{self.name}_{dataset_type}_anchor_positive_dist_other" : np.array(anchor_positive_other).mean(),
+                    f"{self.name}_{dataset_type}_anchor_negative_dist_other" : np.array(anchor_negative_other).mean(),
+                    f"{self.name}_{dataset_type}_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
                 })
   
 

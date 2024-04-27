@@ -7,8 +7,7 @@ import numpy as np
 import torch 
 from torch import nn
 from torch.utils.data import DataLoader
-
-import wandb
+from accelerate import Accelerator
 
 from rl4dgm.models.mydatasets import FeatureDoubleLabelDataset
 from rl4dgm.models.my_models import LinearModel
@@ -19,9 +18,12 @@ class ErrorPredictorTrainer:
     """
     def __init__(
             self, 
+            device,
+            accelerator: Accelerator,
             trainset: FeatureDoubleLabelDataset,
             testset: FeatureDoubleLabelDataset, 
-            config_dict: dict
+            config_dict: dict,
+            name="error_predictor",
         ):
         """
         Args:
@@ -45,6 +47,9 @@ class ErrorPredictorTrainer:
         # create directory to save config and model checkpoints 
         assert "save_dir" in config_dict.keys(), "config_dict is missing key: save_dir"
         os.makedirs(config_dict["save_dir"], exist_ok=False)
+        
+        # make sure input dimension is defined in the config
+        assert "input_dim" in config_dict.keys(), "config_dict is missing key: input_dim"
             
         # populate the config with default values if values are not provided
         for key in default_config:
@@ -55,6 +60,9 @@ class ErrorPredictorTrainer:
             json.dump(config_dict, f)
             print("saved ErrorPredictorTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
         
+        self.name = name
+        self.accelerator = accelerator
+        self.device = device
         self.model = LinearModel(
             input_dim=config_dict["input_dim"],
             hidden_dims=config_dict["hidden_dims"],
@@ -123,12 +131,12 @@ class ErrorPredictorTrainer:
                 n_steps += 1
                 self.n_total_steps += 1
 
-                wandb.log({
-                    "epoch" : epoch,
-                    "step" : n_steps,
-                    "loss" : loss.item(),
-                    "lr" : self.config["lr"],
-                    "clock_time" : time.time() - self.start_time,
+                self.accelerator.log({
+                    f"{self.name}_epoch" : epoch,
+                    f"{self.name}_step" : n_steps,
+                    f"{self.name}_loss" : loss.item(),
+                    f"{self.name}_lr" : self.config["lr"],
+                    f"{self.name}_clock_time" : time.time() - self.start_time,
                 })
             
             # save checkpoint
@@ -153,9 +161,9 @@ class ErrorPredictorTrainer:
                 prediction_percent_errors = prediction_errors / (self.datasets[dataset_type].agent1_label_max - self.datasets[dataset_type].agent1_label_min) 
 
                 wandb.log({
-                    f"{dataset_type}_mean_error" : prediction_errors.mean(),
-                    f"{dataset_type}_mean_percent_error" : prediction_percent_errors.mean(),
-                    f"{dataset_type}_samples_with_under_10%_error" : (prediction_percent_errors < 0.1).sum() / predicted_agent1_labels.shape[0],
-                    f"{dataset_type}_samples_with_under_20%_error" : (prediction_percent_errors < 0.2).sum() / predicted_agent1_labels.shape[0],
-                    f"{dataset_type}_samples_with_under_30%_error" : (prediction_percent_errors < 0.3).sum() / predicted_agent1_labels.shape[0],
+                    f"{self.name}_{dataset_type}_mean_error" : prediction_errors.mean(),
+                    f"{self.name}_{dataset_type}_mean_percent_error" : prediction_percent_errors.mean(),
+                    f"{self.name}_{dataset_type}_samples_with_under_10%_error" : (prediction_percent_errors < 0.1).sum() / predicted_agent1_labels.shape[0],
+                    f"{self.name}_{dataset_type}_samples_with_under_20%_error" : (prediction_percent_errors < 0.2).sum() / predicted_agent1_labels.shape[0],
+                    f"{self.name}_{dataset_type}_samples_with_under_30%_error" : (prediction_percent_errors < 0.3).sum() / predicted_agent1_labels.shape[0],
                 })

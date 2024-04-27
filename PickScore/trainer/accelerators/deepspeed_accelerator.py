@@ -7,7 +7,7 @@ from accelerate.utils import PrecisionType
 from accelerate import Accelerator, DeepSpeedPlugin
 from omegaconf import OmegaConf, MISSING, II
 
-from trainer.accelerators.base_accelerator import BaseAcceleratorConfig, BaseAccelerator
+from PickScore.trainer.accelerators.base_accelerator import BaseAcceleratorConfig, BaseAccelerator
 
 
 @dataclass

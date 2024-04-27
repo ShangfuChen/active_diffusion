@@ -8,8 +8,8 @@ from accelerate.utils import LoggerType
 from omegaconf import II
 from transformers import AutoTokenizer
 
-from trainer.accelerators.base_accelerator import BaseAccelerator
-from trainer.tasks.base_task import BaseTaskConfig, BaseTask
+from PickScore.trainer.accelerators.base_accelerator import BaseAccelerator
+from PickScore.trainer.tasks.base_task import BaseTaskConfig, BaseTask
 
 logger = get_logger(__name__)
 

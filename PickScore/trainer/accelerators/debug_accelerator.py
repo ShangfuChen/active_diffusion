@@ -1,6 +1,6 @@
 from dataclasses import dataclass
 from accelerate import Accelerator
-from trainer.accelerators.base_accelerator import BaseAcceleratorConfig, BaseAccelerator
+from PickScore.trainer.accelerators.base_accelerator import BaseAcceleratorConfig, BaseAccelerator
 
 
 @dataclass

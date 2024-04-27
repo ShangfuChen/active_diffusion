@@ -1,7 +1,7 @@
 from hydra.core.config_store import ConfigStore
 
-from trainer.lr_schedulers.constant_with_warmup import ConstantWithWarmupLRSchedulerConfig
-from trainer.lr_schedulers.dummy_lr_scheduler import DummyLRSchedulerConfig
+from PickScore.trainer.lr_schedulers.constant_with_warmup import ConstantWithWarmupLRSchedulerConfig
+from PickScore.trainer.lr_schedulers.dummy_lr_scheduler import DummyLRSchedulerConfig
 
 cs = ConfigStore.instance()
 cs.store(group="lr_scheduler", name="dummy", node=DummyLRSchedulerConfig)

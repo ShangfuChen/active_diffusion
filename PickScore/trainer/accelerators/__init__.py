@@ -1,7 +1,7 @@
 from hydra.core.config_store import ConfigStore
 
-from trainer.accelerators.debug_accelerator import DebugAcceleratorConfig
-from trainer.accelerators.deepspeed_accelerator import DeepSpeedAcceleratorConfig
+from PickScore.trainer.accelerators.debug_accelerator import DebugAcceleratorConfig
+from PickScore.trainer.accelerators.deepspeed_accelerator import DeepSpeedAcceleratorConfig
 
 ACCELERATOR_GROUP_NAME = "accelerator"
 

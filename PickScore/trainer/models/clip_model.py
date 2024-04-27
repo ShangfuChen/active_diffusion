@@ -3,7 +3,7 @@ from transformers import CLIPModel as HFCLIPModel
 
 from torch import nn
 
-from trainer.models.base_model import BaseModelConfig
+from PickScore.trainer.models.base_model import BaseModelConfig
 
 
 @dataclass

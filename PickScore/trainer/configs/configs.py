@@ -3,18 +3,18 @@ from typing import List, Any, Dict
 
 from omegaconf import DictConfig, MISSING
 
-import trainer.accelerators
-import trainer.tasks
-import trainer.models
-import trainer.criterions
-import trainer.datasetss
-import trainer.optimizers
-import trainer.lr_schedulers
-import trainer.ddpo_conf
-import trainer.query_conf
-from trainer.accelerators.base_accelerator import BaseAcceleratorConfig
-from trainer.models.base_model import BaseModelConfig
-from trainer.tasks.base_task import BaseTaskConfig
+import PickScore.trainer.accelerators
+import PickScore.trainer.tasks
+import PickScore.trainer.models
+import PickScore.trainer.criterions
+import PickScore.trainer.datasetss
+import PickScore.trainer.optimizers
+import PickScore.trainer.lr_schedulers
+import PickScore.trainer.ddpo_conf
+import PickScore.trainer.query_conf
+from PickScore.trainer.accelerators.base_accelerator import BaseAcceleratorConfig
+from PickScore.trainer.models.base_model import BaseModelConfig
+from PickScore.trainer.tasks.base_task import BaseTaskConfig
 
 
 def _locate(path: str) -> Any:

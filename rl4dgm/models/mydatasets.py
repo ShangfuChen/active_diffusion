@@ -4,9 +4,6 @@ import torch
 from torch.utils.data import Dataset
 from torch.distributions import Normal
 
-
-import time
-
 def get_weighted_sample(weights, k):
     """
     Given weights, sample an index with probability proportional to the weights
@@ -37,8 +34,8 @@ class TripletDataset(Dataset):
         is_train=False,
         sampling_method="default",
     ):
-        self.features = features.to(device)
-        self.scores = scores.to(device)
+        self.features = features.float().to(device)
+        self.scores = scores.float().to(device)
         self.is_train = is_train
         self.indices = torch.arange(scores.shape[0]).to(device)
         self.score_range = scores.max() - scores.min()
@@ -72,7 +69,6 @@ class TripletDataset(Dataset):
             most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
             positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
             positive_feature = self.features[positive_index]
-
             negative_index = random.choice(most_to_least_similar_indices[int(0.9*self.features.shape[0]):])
             negative_feature = self.features[negative_index]
 
@@ -111,10 +107,10 @@ class DoubleTripletDataset(Dataset):
         score_percent_error_thresh=0.1, 
         sampling_method="default",
     ):
-        self.features = features.to(device)
-        self.encoded_features = encoded_features.to(device)
-        self.scores_self = scores_self.to(device)        
-        self.scores_other = scores_other.to(device)
+        self.features = features.float().to(device)
+        self.encoded_features = encoded_features.float().to(device)
+        self.scores_self = scores_self.float().to(device)        
+        self.scores_other = scores_other.float().to(device)
         self.indices = torch.arange(scores_self.shape[0]).to(device)
         self.score_range_self = scores_self.max() - scores_self.min()
         self.score_range_other = scores_other.max() - scores_other.min()
@@ -217,7 +213,7 @@ class FeatureDoubleLabelDataset(Dataset):
         agent2_labels, # labels from agent 2
         device,
     ):
-        super(FeatureLabelDataset, self).__init__()
+        super(FeatureDoubleLabelDataset, self).__init__()
         self.features = features.float().to(device)
         self.agent1_labels = agent1_labels.float().to(device)
         self.agent2_labels = agent2_labels.float().to(device)
@@ -272,3 +268,83 @@ class HumanRewardDatasetNoImage(Dataset):
         return self.human_rewards[idx], self.ai_rewards[idx]
     
 
+class HumanDataset():
+    """
+    Note : This class is used to accumulate human data while training the encoder-predictor pipelins
+        It is NOT a torch dataset. 
+    """
+    def __init__(
+        self, 
+        n_data_to_accumulate, 
+        device
+    ):
+        self.clear_data()
+
+        self.n_data_to_accumulate = n_data_to_accumulate
+        self.device = device
+        
+    def clear_data(self,):
+        print("clear data called")
+        self._sd_features = None
+        self._human_rewards = None
+        self._ai_rewards = None
+        self._n_data = 0
+
+    def add_data(self, sd_features, human_rewards, ai_rewards):
+        """
+        Add sd_features, human rewards, and ai rewards to the human dataset
+        """
+        # cast inputs to tensors, correct dimension, and put on correct device
+        assert isinstance(sd_features, torch.Tensor), f"sd_features must be a torch.Tensor"
+        sd_features = sd_features.to(self.device)
+        sd_features = self._make_2d(sd_features)
+
+        if not isinstance(human_rewards, torch.Tensor):
+            human_rewards = torch.Tensor(human_rewards)
+        human_rewards = human_rewards.to(self.device)
+
+        if not isinstance(ai_rewards, torch.Tensor):
+            ai_rewards = torch.Tensor(ai_rewards)
+        ai_rewards = ai_rewards.to(self.device)
+
+        # if this is the first set of data added, initialize
+        if self._sd_features is None:
+            self._sd_features = sd_features
+            self._human_rewards = human_rewards
+            self._ai_rewards = ai_rewards
+        
+        # otherwise concatenate new data
+        else:
+            self._sd_features = torch.cat([self._sd_features, sd_features], dim=0)
+            self._human_rewards = torch.cat([self._human_rewards, human_rewards])
+            self._ai_rewards = torch.cat([self._ai_rewards, ai_rewards])
+
+        # update number of data
+        self._n_data += sd_features.shape[0]
+
+    def _make_2d(self, input_tensor):
+        """
+        If the input is 1d, add a dimension to make it 2d
+        """
+        if input_tensor.dim() == 1:
+            return input_tensor[None,:]
+        elif input_tensor.dim() == 2:
+            return input_tensor
+        else:
+            raise Exception("input tensor dimension is incorrect")
+
+    @property
+    def n_data(self,):
+        return self._n_data
+
+    @property
+    def sd_features(self,):
+        return self._sd_features
+    
+    @property
+    def human_rewards(self,):
+        return self._human_rewards
+    
+    @property
+    def ai_rewards(self,):
+        return self._ai_rewards

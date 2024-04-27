@@ -14,8 +14,8 @@ from accelerate.logging import get_logger
 from omegaconf import DictConfig, OmegaConf
 from torch import nn
 
-from trainer.accelerators.base_accelerator import BaseAccelerator
-from trainer.configs.configs import TrainerConfig, instantiate_with_cfg
+from PickScore.trainer.accelerators.base_accelerator import BaseAccelerator
+from PickScore.trainer.configs.configs import TrainerConfig, instantiate_with_cfg
 
 from diffusers import DiffusionPipeline
 
