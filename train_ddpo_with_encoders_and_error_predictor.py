@@ -1,8 +1,6 @@
-import hydra
 
-from ddpo_trainer import DDPOTrainer
-from reward_model_trainer import PickScoreTrainer
-# from reward_model_trainer_copy import PickScoreTrainer
+
+import hydra
 
 from accelerate.logging import get_logger
 from transformers import AutoProcessor, AutoModel
@@ -10,8 +8,10 @@ from trainer.configs.configs import TrainerConfig, instantiate_with_cfg
 
 import os
 import numpy as np
+import torch
 import datetime
 
+from ddpo_trainer import DDPOTrainer
 from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne, ColorScoreOne, PickScore
 from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
 from rl4dgm.utils.query_generator import EvaluationQueryGenerator
@@ -43,17 +43,17 @@ def main(cfg: TrainerConfig) -> None:
     ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger, accelerator=None)
     ai_encoder_trainer = TripletEncoderTrainer(
         config_dict = { # TODO - put this in config
-            "batch_size" : 32,
+            "batch_size" : 16,
             "shuffle" : True,
             "lr" : 1e-6,
-            "n_epochs" : 50,
+            "n_epochs" : 2,
             "triplet_margin" : 1.0,
             "save_dir" : None,
             "save_every" : 50,
             "input_dim" : 32768,
-            "n_hidden_layers" : 5,
-            "hidden_dims" : [22000]*6,
-            "output_dim" : 4096,
+            "n_hidden_layers" : 3,
+            "hidden_dims" : [32768, 8192, 2048, 512],
+            "output_dim" : 512,
         },
         device=ddpo_trainer.accelerator.device,
         trainset=None,
@@ -61,10 +61,10 @@ def main(cfg: TrainerConfig) -> None:
     )
     human_encoder_trainer = DoubleTripletEncoderTrainer(
         config_dict={ # TODO put this in config
-            "batch_size" : 32,
+            "batch_size" : 16,
             "shuffle" : True,
             "lr" : 1e-6,
-            "n_epochs" : 50,
+            "n_epochs" : 2,
             "save_dir" : None,
             "save_every" : 50,
             "agent1_triplet_margin" : 1.0,
@@ -72,9 +72,9 @@ def main(cfg: TrainerConfig) -> None:
             "agent1_loss_weight" : 1.0,
             "agent2_loss_weight" : 0.25,
             "input_dim" : 32768,
-            "n_hidden_layers" : 5,
-            "hidden_dims" : [22000]*6,
-            "output_dim" : 4096,
+            "n_hidden_layers" : 3,
+            "hidden_dims" : [32768, 8192, 2048, 512],
+            "output_dim" : 512,
         },
         trainset=None,
         testset=None,
@@ -83,15 +83,15 @@ def main(cfg: TrainerConfig) -> None:
         trainset=None,
         testset=None,
         config_dict={ # TODO put this in config
-            "batch_size" : 32,
+            "batch_size" : 16,
             "shuffle" : True,
             "lr" : 1e-6,
-            "n_epochs" : 50,
+            "n_epochs" : 2,
             "save_dir" : None,
             "save_every" : 50,
-            "n_hidden_layers" : 5,
-            "hidden_dims" : [22000]*6,
-            "output_dim" : 4096,
+            "n_hidden_layers" : 3,
+            "hidden_dims" : [512]*4,
+            "output_dim" : 1,
         },
     )
 
@@ -133,9 +133,11 @@ def main(cfg: TrainerConfig) -> None:
             # high_reward_latents=high_reward_latents) 
 
         ai_rewards = [elem for sublist in ai_rewards for elem in sublist] # flatten list 
-    
+        print("check shape of all_latents")
+        breakpoint()
+
         ############################################################
-        # Active query 
+        # Active query --> get human rewards
         ############################################################
         # choose indices to query
         query_indices = query_generator.get_query_indices(
@@ -192,10 +194,32 @@ def main(cfg: TrainerConfig) -> None:
         # Train error predictor
         ############################################################
         # make a dataset
-
-        #TODO-START HERE
+        human_and_ai_encodings = torch.cat([human_encodings, ai_encodings], dim=1)
         error_predictor_trainset = FeatureDoubleLabelDataset(
-            features=
+            features=human_and_ai_encodings,
+            agent1_labels=human_rewards,
+            agent2_labels=ai_rewards[query_indices],
+            device=ddpo_trainer.accelerator.device,
+        )
+        error_predictor_trainer.initialize_dataloaders(trainset=error_predictor_trainset)
+        error_predictor_trainer.train_model()
+
+        ############################################################
+        # Get final rewards for DDPO training
+        ############################################################
+        final_rewards = torch.zeros(all_latents.shape[0])
+        final_rewards[query_indices] = human_rewards 
+        ai_indices = np.setdiff1d(np.array(query_indices.cpu()), np.arange(all_latents.shape[0])) # feature indices where AI reward is used
+        predicted_error = error_predictor_trainer.model(all_latents[ai_indices]) 
+        final_rewards[ai_indices] = ai_rewards[ai_indices] + predicted_error
+
+        ############################################################
+        # Train SD via DDPO
+        ############################################################
+        ddpo_trainer.train_from_reward_labels(
+            raw_rewards=final_rewards,
+            logger=logger,
+            epoch=loop,
         )
 
 
