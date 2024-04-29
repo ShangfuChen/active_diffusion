@@ -65,10 +65,10 @@ class DDPOTrainer:
         # if accelerator is not provided, create a new one and set up tracker
         if accelerator is None:
             accelerator_config = ProjectConfiguration(
-            project_dir=os.path.join(config.logdir, config.run_name),
-            automatic_checkpoint_naming=True,
-            total_limit=config.num_checkpoint_limit,
-        )
+                project_dir=os.path.join(config.logdir, config.run_name),
+                automatic_checkpoint_naming=True,
+                total_limit=config.num_checkpoint_limit,
+            )
             self.accelerator = Accelerator(
                 log_with="wandb",
                 mixed_precision=config.mixed_precision,

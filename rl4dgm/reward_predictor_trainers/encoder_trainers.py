@@ -61,7 +61,16 @@ class TripletEncoderTrainer:
         with open(os.path.join(config_dict["save_dir"], "train_config.json"), "w") as f:
             json.dump(config_dict, f)
             print("saved TripletEncoderTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
-        
+                
+        self.seed = seed
+        self.generator = torch.Generator()
+        self.generator.manual_seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.cuda.manual_seed(seed)
+
         self.accelerator = accelerator
         self.device = accelerator.device
         self.model = LinearModel(
@@ -69,14 +78,12 @@ class TripletEncoderTrainer:
             hidden_dims=config_dict["hidden_dims"],
             output_dim=config_dict["output_dim"],
             device=self.device,
+            seed=seed,
         )
         self.trainset = trainset
         self.testset = testset
         self.config = config_dict
         self.name = config_dict["name"]
-        self.seed = seed
-        self.generator = torch.Generator()
-        self.generator.manual_seed(self.seed)
 
         # Initialize dataloaders
         self.dataloaders = {}
@@ -234,6 +241,15 @@ class DoubleTripletEncoderTrainer:
             json.dump(config_dict, f)
             print("saved DoubleTripletEncoderTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
         
+        self.seed = seed
+        self.generator = torch.Generator()
+        self.generator.manual_seed(seed)
+        np.random.seed(seed)
+        torch.manual_seed(seed)
+        torch.backends.cudnn.benchmark = False
+        torch.backends.cudnn.deterministic = True
+        torch.cuda.manual_seed(seed)
+
         self.accelerator = accelerator
         self.device = accelerator.device
         self.model = LinearModel(
@@ -241,14 +257,12 @@ class DoubleTripletEncoderTrainer:
             hidden_dims=config_dict["hidden_dims"],
             output_dim=config_dict["output_dim"],
             device=self.device,
+            seed=seed,
         )
         self.trainset = trainset
         self.testset = testset
         self.config = config_dict
         self.name = config_dict["name"]
-        self.seed = seed
-        self.generator = torch.Generator()
-        self.generator.manual_seed(self.seed)
 
         # Initialize dataloaders
         self.dataloaders = {}

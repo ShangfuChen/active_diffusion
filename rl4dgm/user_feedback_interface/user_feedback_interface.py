@@ -121,15 +121,7 @@ class FeedbackInterface:
                 img_save_path="query_image.png",
             )
             # Get feedback
-            if self.preference_function.__name__ == 'PickScore':
-                feedback = self._get_feedback(processor=self.processor,
-                                              model=self.reward_model,
-                                              prompt=prompt,
-                                              images=images,
-                                              device=image_batch.device,
-                                              )
-            else:
-                feedback = self._get_feedback(prompt=prompt, images=images)
+            feedback = self._get_feedback(prompt=prompt, images=images)
             feedbacks.append(feedback)
 
             # Append query + feedback to self.df
@@ -447,6 +439,48 @@ class AIFeedbackInterface(FeedbackInterface):
             img_paths (list(str)) : list of paths to images to query
         """
         return self.preference_function(**kwargs)
+    
+    def query_batch(self, prompts, image_batch, query_indices, **kwargs):
+        """
+        Version of query() that takes a batch of images in the form of tensor (B x C x H x W),
+        and a list of index-pairs to query
+
+        Args:
+            prompts (list(str)) : list of prompts corresponding to images in image_batch
+            image_batch (Tensor) : (B x C x H x W) tensor of images
+            query_indices (list(list(int))) : list of queries where each entry is [idx0, idx1] of images to query
+        """
+        prompts = self._process_prompts(prompts=prompts)
+        feedbacks = []
+        for query, prompt in zip(query_indices, prompts):
+            # Get query images in PIL format 
+            if not isinstance(query, Iterable):
+                query = [query]
+            images = [to_pil_image(image_batch[idx]) for idx in query]
+
+            # Save query image for user
+            self._save_query_image(
+                images=images,
+                prompt=prompt,
+                img_save_path="query_image.png",
+            )
+            # Get feedback
+            if self.preference_function.__name__ == 'PickScore':
+                feedback = self._get_feedback(processor=self.processor,
+                                              model=self.reward_model,
+                                              prompt=prompt,
+                                              images=images,
+                                              device=image_batch.device,
+                                              )
+            else:
+                feedback = self._get_feedback(prompt=prompt, images=images)
+            feedbacks.append(feedback)
+
+            # Append query + feedback to self.df
+            self._store_feedback(feedback=feedback, images=images, prompt=prompt)
+
+        return feedbacks # in case getting values directly is more convenient than saving as datafile
+      
     
 
 class HumanFeedbackInterface(FeedbackInterface):
