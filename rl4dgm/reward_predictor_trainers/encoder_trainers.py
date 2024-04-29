@@ -19,11 +19,10 @@ class TripletEncoderTrainer:
     def __init__(
             self, 
             config_dict: dict,
-            device,
             accelerator: Accelerator,
+            seed,
             trainset: TripletDataset = None,
             testset: TripletDataset = None, 
-            name="triplet_encoder",
         ):
         """
         Args:
@@ -44,6 +43,7 @@ class TripletEncoderTrainer:
             "n_hidden_layers" : 5,
             "hidden_dims" : [22000]*6,
             "output_dim" : 4096,
+            "name" : "triplet_encoder",
         }
 
         # create directory to save config and model checkpoints 
@@ -54,14 +54,16 @@ class TripletEncoderTrainer:
         for key in default_config:
             if key not in config_dict.keys():
                 config_dict[key] = default_config[key]
+        # hidden_dim is ListConfig type if speficied in hydra config. Convert to list so it can be dumped to json
+        config_dict["hidden_dims"] = [dim for dim in config_dict["hidden_dims"]]
+
         print("Initializing TripletEncoderTrainer with following configs\n", config_dict)
         with open(os.path.join(config_dict["save_dir"], "train_config.json"), "w") as f:
             json.dump(config_dict, f)
             print("saved TripletEncoderTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
         
-        self.name = name
         self.accelerator = accelerator
-        self.device = device
+        self.device = accelerator.device
         self.model = LinearModel(
             input_dim=config_dict["input_dim"],
             hidden_dims=config_dict["hidden_dims"],
@@ -71,6 +73,10 @@ class TripletEncoderTrainer:
         self.trainset = trainset
         self.testset = testset
         self.config = config_dict
+        self.name = config_dict["name"]
+        self.seed = seed
+        self.generator = torch.Generator()
+        self.generator.manual_seed(self.seed)
 
         # Initialize dataloaders
         self.dataloaders = {}
@@ -98,11 +104,21 @@ class TripletEncoderTrainer:
         """
         if trainset is not None:
             self.trainset = trainset
-            self.trainloader = DataLoader(trainset, batch_size=self.config["batch_size"], shuffle=self.config["shuffle"])
+            self.trainloader = DataLoader(
+                trainset, 
+                batch_size=self.config["batch_size"], 
+                shuffle=self.config["shuffle"],
+                generator=self.generator,
+            )
             self.dataloaders["train"] = self.trainloader
         if testset is not None:
             self.testset = testset
-            self.testloader = DataLoader(testset, batch_size=self.config["batch_size"], shuffle=self.config["shuffle"])
+            self.testloader = DataLoader(
+                testset, 
+                batch_size=self.config["batch_size"], 
+                shuffle=self.config["shuffle"],
+                generator=self.generator,
+            )
             self.dataloaders["test"] = self.testloader
 
     def train_model(self):
@@ -113,7 +129,8 @@ class TripletEncoderTrainer:
         for epoch in range(self.config["n_epochs"]):
             self.n_total_epochs += 1
             running_losses = []
-            print("TripletEncoder training epoch", epoch)
+            if epoch % 100 == 0:
+                print("TripletEncoder training epoch", epoch)
             for step, (anchor_features, _, positive_features, negative_features) in enumerate(self.trainloader):
                 self.optimizer.zero_grad()
                 anchor_out = self.model(anchor_features)
@@ -171,11 +188,10 @@ class DoubleTripletEncoderTrainer:
     def __init__(
             self, 
             config_dict: dict,
-            device,
+            seed,
             accelerator: Accelerator,
             trainset: DoubleTripletDataset = None,
             testset: DoubleTripletDataset = None, 
-            name="double_tiplet_encoder",
         ):
         """
         Args:
@@ -199,6 +215,7 @@ class DoubleTripletEncoderTrainer:
             "n_hidden_layers" : 5,
             "hidden_dims" : [22000]*6,
             "output_dim" : 4096,
+            "name" : "double_tiplet_encoder",
         }
 
         # create directory to save config and model checkpoints 
@@ -209,14 +226,16 @@ class DoubleTripletEncoderTrainer:
         for key in default_config:
             if key not in config_dict.keys():
                 config_dict[key] = default_config[key]
+        # hidden_dim is ListConfig type if speficied in hydra config. Convert to list so it can be dumped to json
+        config_dict["hidden_dims"] = [dim for dim in config_dict["hidden_dims"]]
+
         print("Initializing DoubleTripletEncoderTrainer with following configs\n", config_dict)
         with open(os.path.join(config_dict["save_dir"], "train_config.json"), "w") as f:
             json.dump(config_dict, f)
             print("saved DoubleTripletEncoderTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
         
-        self.name = name
         self.accelerator = accelerator
-        self.device = device
+        self.device = accelerator.device
         self.model = LinearModel(
             input_dim=config_dict["input_dim"],
             hidden_dims=config_dict["hidden_dims"],
@@ -226,6 +245,10 @@ class DoubleTripletEncoderTrainer:
         self.trainset = trainset
         self.testset = testset
         self.config = config_dict
+        self.name = config_dict["name"]
+        self.seed = seed
+        self.generator = torch.Generator()
+        self.generator.manual_seed(self.seed)
 
         # Initialize dataloaders
         self.dataloaders = {}
@@ -254,12 +277,21 @@ class DoubleTripletEncoderTrainer:
         """
         if trainset is not None:
             self.trainset = trainset
-            self.trainloader = DataLoader(trainset, batch_size=self.config["batch_size"], shuffle=self.config["shuffle"])
+            self.trainloader = DataLoader(
+                trainset, 
+                batch_size=self.config["batch_size"], 
+                shuffle=self.config["shuffle"],
+                generator=self.generator,
+            )
             self.dataloaders["train"] = self.trainloader
         if testset is not None:
             self.testset = testset
-            self.testloader = DataLoader(testset, batch_size=self.config["batch_size"], shuffle=self.config["shuffle"])
-            self.dataloaders["test"] = self.testloader
+            self.testloader = DataLoader(
+                testset, 
+                batch_size=self.config["batch_size"], 
+                shuffle=self.config["shuffle"],
+                generator=self.generator,
+            )
 
     def train_model(self):
         """
@@ -270,7 +302,8 @@ class DoubleTripletEncoderTrainer:
         for epoch in range(self.config["n_epochs"]):
             self.n_total_epochs += 1
             running_losses = []
-            print("TripletEncoder training epoch", epoch)
+            if epoch % 100 == 0:
+                print("TripletEncoder training epoch", epoch)
 
             for step, (anchor_features, _, positive_feature_self, negative_feature_self, other_feature, is_positive) in enumerate(self.trainloader):
                 self.optimizer.zero_grad()
@@ -356,7 +389,3 @@ class DoubleTripletEncoderTrainer:
                     f"{self.name}_{dataset_type}_dist_diff_other" : (np.array(anchor_negative_other) - np.array(anchor_positive_other)).mean(),
                 })
   
-
-
-
-            

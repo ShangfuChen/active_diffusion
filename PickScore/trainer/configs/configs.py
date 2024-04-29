@@ -12,6 +12,9 @@ import PickScore.trainer.optimizers
 import PickScore.trainer.lr_schedulers
 import PickScore.trainer.ddpo_conf
 import PickScore.trainer.query_conf
+import PickScore.trainer.human_encoder_conf
+import PickScore.trainer.ai_encoder_conf
+import PickScore.trainer.error_predictor_conf
 from PickScore.trainer.accelerators.base_accelerator import BaseAcceleratorConfig
 from PickScore.trainer.models.base_model import BaseModelConfig
 from PickScore.trainer.tasks.base_task import BaseTaskConfig
@@ -92,6 +95,9 @@ defaults = [
     {"lr_scheduler": "constant_with_warmup"},
     {"ddpo_conf": "ddpo_train"},
     {"query_conf" : "query_conf"},
+    {"ai_encoder_conf" : "ai_encoder_conf"},
+    {"human_encoder_conf" : "human_encoder_conf"},
+    {"error_predictor_conf" : "error_predictor_conf"}
 ]
 
 

@@ -35,7 +35,7 @@ import torchvision
 from omegaconf import DictConfig, OmegaConf
 
 class DDPOTrainer:
-    def __init__(self, config : DictConfig, logger, accelerator=None):#, dummy_loader):
+    def __init__(self, config : DictConfig, logger, accelerator=None):
         unique_id = datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S")
         if not config.run_name:
             config.run_name = unique_id
@@ -59,17 +59,16 @@ class DDPOTrainer:
         # number of timesteps within each trajectory to train on
         self.num_train_timesteps = int(config.sample_num_steps * config.train_timestep_fraction)
 
-        accelerator_config = ProjectConfiguration(
+        os.environ["ACCELERATE_USE_DEEPSPEED"] = "false"
+        print("\nACCELERATE_USE_DEEPSPEED: ", os.environ.get("ACCELERATE_USE_DEEPSPEED"))
+        
+        # if accelerator is not provided, create a new one and set up tracker
+        if accelerator is None:
+            accelerator_config = ProjectConfiguration(
             project_dir=os.path.join(config.logdir, config.run_name),
             automatic_checkpoint_naming=True,
             total_limit=config.num_checkpoint_limit,
         )
-
-        os.environ["ACCELERATE_USE_DEEPSPEED"] = "false"
-        print("\nACCELERATE_USE_DEEPSPEED: ", os.environ.get("ACCELERATE_USE_DEEPSPEED"))
-        
-        # breakpoint()
-        if accelerator is None:
             self.accelerator = Accelerator(
                 log_with="wandb",
                 mixed_precision=config.mixed_precision,
@@ -78,16 +77,16 @@ class DDPOTrainer:
                 # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
                 # the total number of optimizer steps to accumulate across.
                 gradient_accumulation_steps=config.train_gradient_accumulation_steps*config.train_num_update)
+            if self.accelerator.is_main_process:
+                self.accelerator.init_trackers(
+                    project_name="active-diffusion",
+                    # config=config.to_dict(),
+                    config=dict(config),
+                    init_kwargs={"wandb": {"name": config.run_name}},
+                )
+
         else:
             self.accelerator = accelerator
-
-        if self.accelerator.is_main_process:
-            self.accelerator.init_trackers(
-                project_name="active-diffusion",
-                # config=config.to_dict(),
-                config=dict(config),
-                init_kwargs={"wandb": {"name": config.run_name}},
-            )
         logger.info(f"\n{config}")
 
         # set seed (device_specific is very important to get different prompts on different devices)

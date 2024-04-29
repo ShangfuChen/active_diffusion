@@ -2,16 +2,16 @@
 
 import hydra
 
+from accelerate import Accelerator
 from accelerate.logging import get_logger
-from transformers import AutoProcessor, AutoModel
 from PickScore.trainer.configs.configs import TrainerConfig, instantiate_with_cfg
+from accelerate.utils import set_seed, ProjectConfiguration
+
 
 import os
 import numpy as np
 import torch
 import datetime
-
-import pandas as pd
 
 from ddpo_trainer import DDPOTrainer
 from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne, ColorScoreOne, PickScore
@@ -40,65 +40,67 @@ def main(cfg: TrainerConfig) -> None:
         os.mkdir(img_save_dir)
     
     
-    # TODO put in config
-    n_human_data_for_training = 32 # minimum number of human data to accumulate before training the human encoder
+    n_human_data_for_training = cfg.human_encoder_conf.n_data_needed_for_training # minimum number of human data to accumulate before training the human encoder
+    
+    # set seed
+    np.random.seed(cfg.ddpo_conf.seed)
+    torch.manual_seed(cfg.ddpo_conf.seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+
+    ############################################
+    # Initialize accelerator
+    ############################################
+    accelerator_config = ProjectConfiguration(
+        project_dir=os.path.join(cfg.ddpo_conf.logdir, cfg.ddpo_conf.run_name),
+        automatic_checkpoint_naming=True,
+        total_limit=cfg.ddpo_conf.num_checkpoint_limit,
+    )
+
+    accelerator = Accelerator(
+        log_with="wandb",
+        mixed_precision=cfg.ddpo_conf.mixed_precision,
+        project_config=accelerator_config,
+        # we always accumulate gradients across timesteps; we want config.train_gradient_accumulation_steps to be the
+        # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
+        # the total number of optimizer steps to accumulate across.
+        gradient_accumulation_steps=cfg.ddpo_conf.train_gradient_accumulation_steps*cfg.ddpo_conf.train_num_update)
+    if accelerator.is_main_process:
+        accelerator.init_trackers(
+            project_name="active-diffusion",
+            config=dict(cfg),
+            init_kwargs={"wandb": {"name": cfg.ddpo_conf.run_name}},
+        )
 
 
     ############################################
     # Initialize trainers
     ############################################
     print("\nInitializing DDPO trainer...")
-    ddpo_trainer = DDPOTrainer(config=cfg.ddpo_conf, logger=logger, accelerator=None)
+    ddpo_trainer = DDPOTrainer(
+        config=cfg.ddpo_conf, 
+        logger=logger, 
+        accelerator=accelerator
+    )
     print("...done\n")
 
     print("Initializing AI encoder trainer...")
     ai_encoder_trainer = TripletEncoderTrainer(
-        config_dict = { # TODO - put this in config
-            "batch_size" : 32,
-            "shuffle" : True,
-            "lr" : 1e-6,
-            "n_epochs" : 50,
-            "triplet_margin" : 1.0,
-            "save_dir" : None,
-            "save_every" : 50,
-            "input_dim" : 16384,
-            "n_hidden_layers" : 3,
-            "hidden_dims" : [16384, 8192, 2048, 512],
-            "output_dim" : 512,
-            "save_dir" : "/data/hayano/full_pipeline_test/ai_encoder",
-        },
-        device=ddpo_trainer.accelerator.device,
+        config_dict=dict(cfg.ai_encoder_conf),
+        seed=cfg.ddpo_conf.seed,
         trainset=None,
         testset=None,
-        accelerator=ddpo_trainer.accelerator,
-        name="AI_encoder",
+        accelerator=accelerator,
     )
     print("...done\n")
 
     print("Initializing human encoder trainer...")
     human_encoder_trainer = DoubleTripletEncoderTrainer(
-        config_dict={ # TODO put this in config
-            "batch_size" : 32,
-            "shuffle" : True,
-            "lr" : 1e-6,
-            "n_epochs" : 50,
-            "save_dir" : None,
-            "save_every" : 50,
-            "agent1_triplet_margin" : 1.0,
-            "agent2_triplet_margin" : 1.0,
-            "agent1_loss_weight" : 1.0,
-            "agent2_loss_weight" : 0.25,
-            "input_dim" : 16384,
-            "n_hidden_layers" : 3,
-            "hidden_dims" : [16384, 8192, 2048, 512],
-            "output_dim" : 512,
-            "save_dir" : "/data/hayano/full_pipeline_test/human_encoder",
-        },
-        device=ddpo_trainer.accelerator.device,
+        config_dict=dict(cfg.human_encoder_conf),
+        seed=cfg.ddpo_conf.seed,
         trainset=None,
         testset=None,
-        accelerator=ddpo_trainer.accelerator,
-        name="human_encoder",
+        accelerator=accelerator,
     )
     print("...done\n")
     
@@ -106,22 +108,9 @@ def main(cfg: TrainerConfig) -> None:
     error_predictor_trainer = ErrorPredictorTrainer(
         trainset=None,
         testset=None,
-        config_dict={ # TODO put this in config
-            "batch_size" : 32,
-            "shuffle" : True,
-            "lr" : 1e-6,
-            "n_epochs" : 100,
-            "save_dir" : None,
-            "save_every" : 50,
-            "input_dim" : 1024,
-            "n_hidden_layers" : 3,
-            "hidden_dims" : [512]*4,
-            "output_dim" : 1,
-            "save_dir" : "/data/hayano/full_pipeline_test/error_predictor",
-        },
-        device=ddpo_trainer.accelerator.device,
-        accelerator=ddpo_trainer.accelerator,
-        name="error_predictor",
+        config_dict=dict(cfg.error_predictor_conf),
+        seed=cfg.ddpo_conf.seed,
+        accelerator=accelerator,
     )
     print("...done\n")
 
@@ -148,7 +137,7 @@ def main(cfg: TrainerConfig) -> None:
     ############################################################
     human_dataset = HumanDataset(
         n_data_to_accumulate=n_human_data_for_training,
-        device=ddpo_trainer.accelerator.device,
+        device=accelerator.device,
     )
     # maximum and minimum human and AI reward values observed so far
     human_reward_max, human_reward_min = None, None
@@ -225,7 +214,7 @@ def main(cfg: TrainerConfig) -> None:
         ai_encoder_trainset = TripletDataset(
             features=sd_features,
             scores=ai_rewards,
-            device=ddpo_trainer.accelerator.device,
+            device=accelerator.device,
             sampling_std=0.2, # TODO add to confg
             sampling_method="default", # TODO add to config
         )
@@ -253,7 +242,7 @@ def main(cfg: TrainerConfig) -> None:
                 encoded_features=re_encoded_ai_features,
                 scores_self=human_dataset.human_rewards,
                 scores_other=human_dataset.ai_rewards,
-                device=ddpo_trainer.accelerator.device,
+                device=accelerator.device,
                 sampling_std_self=0.2, # TODO put these in config
                 sampling_std_other=0.2,
                 score_percent_error_thresh=0.1,
@@ -273,7 +262,7 @@ def main(cfg: TrainerConfig) -> None:
                 features=human_and_re_encoded_ai_features,
                 agent1_labels=human_dataset.human_rewards,
                 agent2_labels=human_dataset.ai_rewards,
-                device=ddpo_trainer.accelerator.device,
+                device=accelerator.device,
             )
             error_predictor_trainer.initialize_dataloaders(trainset=error_predictor_trainset)
             error_predictor_trainer.train_model()
@@ -313,15 +302,22 @@ def main(cfg: TrainerConfig) -> None:
                 image_batch=samples[ai_indices],
                 query_indices=np.arange(ai_indices.shape[0]),
             )
+            gnd_truth_human_rewards = torch.Tensor(gnd_truth_human_rewards)
 
-            human_reward_prediction_error = torch.abs(torch.Tensor(gnd_truth_human_rewards) - corrected_ai_rewards) 
+            human_reward_prediction_error = torch.abs(gnd_truth_human_rewards - corrected_ai_rewards) 
             human_reward_predicton_percent_error = human_reward_prediction_error / (human_reward_max - human_reward_min)
-            ddpo_trainer.accelerator.log({
+
+            # record average human reward this entire batch 
+            mean_human_reward = torch.cat((human_rewards, gnd_truth_human_rewards)).mean()
+
+            accelerator.log({
                 "n_corrected_feedback" : ai_indices.shape[0],
                 "human_reward_prediction_mean_error" : human_reward_prediction_error.mean(),
+                "human_reward_prediction_mean_percent_error" : human_reward_predicton_percent_error.mean(),
                 "under_10%_error_ratio" : (human_reward_predicton_percent_error < 0.1).sum() / ai_indices.shape[0],
                 "under_20%_error_ratio" : (human_reward_predicton_percent_error < 0.2).sum() / ai_indices.shape[0],
                 "under_30%_error_ratio" : (human_reward_predicton_percent_error < 0.3).sum() / ai_indices.shape[0],
+                "mean_human_reward_this_batch" : mean_human_reward,
             })
 
         print("Got final rewards", final_rewards)
@@ -346,7 +342,7 @@ def main(cfg: TrainerConfig) -> None:
         #     ai_rewards = np.array(ai_rewards)
         #     ai_rewards = (ai_rewards - ai_rewards.min())/(ai_rewards.max() - ai_rewards.min()).tolist()
         
-        # ddpo_trainer.accelerator.log(
+        # accelerator.log(
         #     {"AI reward": np.asarray(ai_rewards).mean(),
         #      "Human reward": np.asarray(human_rewards).mean()}
         # )

@@ -18,12 +18,11 @@ class ErrorPredictorTrainer:
     """
     def __init__(
             self, 
-            device,
             accelerator: Accelerator,
+            seed,
             trainset: FeatureDoubleLabelDataset,
             testset: FeatureDoubleLabelDataset, 
             config_dict: dict,
-            name="error_predictor",
         ):
         """
         Args:
@@ -42,6 +41,7 @@ class ErrorPredictorTrainer:
             "n_hidden_layers" : 5,
             "hidden_dims" : [22000]*6,
             "output_dim" : 4096,
+            "name" : "error_predictor",
         }
 
         # create directory to save config and model checkpoints 
@@ -55,14 +55,16 @@ class ErrorPredictorTrainer:
         for key in default_config:
             if key not in config_dict.keys():
                 config_dict[key] = default_config[key]
+        # hidden_dim is ListConfig type if speficied in hydra config. Convert to list so it can be dumped to json
+        config_dict["hidden_dims"] = [dim for dim in config_dict["hidden_dims"]]
+        
         print("Initializing ErrorPredictorTrainer with following configs\n", config_dict)
         with open(os.path.join(config_dict["save_dir"], "train_config.json"), "w") as f:
             json.dump(config_dict, f)
             print("saved ErrorPredictorTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
         
-        self.name = name
         self.accelerator = accelerator
-        self.device = device
+        self.device = accelerator.device
         self.model = LinearModel(
             input_dim=config_dict["input_dim"],
             hidden_dims=config_dict["hidden_dims"],
@@ -72,6 +74,10 @@ class ErrorPredictorTrainer:
         self.trainset = trainset
         self.testset = testset
         self.config = config_dict
+        self.name = config_dict["name"]
+        self.seed = seed
+        self.generator = torch.Generator()
+        self.generator.manual_seed(self.seed)
 
         # Initialize dataloaders
         self.dataloaders = {}
@@ -100,13 +106,21 @@ class ErrorPredictorTrainer:
         """
         if trainset is not None:
             self.trainset = trainset
-            self.datasets["train"] = trainset
-            self.trainloader = DataLoader(trainset, batch_size=self.config["batch_size"], shuffle=self.config["shuffle"])
+            self.trainloader = DataLoader(
+                trainset, 
+                batch_size=self.config["batch_size"], 
+                shuffle=self.config["shuffle"],
+                generator=self.generator,
+            )
             self.dataloaders["train"] = self.trainloader
         if testset is not None:
             self.testset = testset
-            self.datasets["test"] = testset
-            self.testloader = DataLoader(testset, batch_size=self.config["batch_size"], shuffle=self.config["shuffle"])
+            self.testloader = DataLoader(
+                testset, 
+                batch_size=self.config["batch_size"], 
+                shuffle=self.config["shuffle"],
+                generator=self.generator,
+            )
             self.dataloaders["test"] = self.testloader
 
     def train_model(self):
@@ -118,7 +132,8 @@ class ErrorPredictorTrainer:
         for epoch in range(self.config["n_epochs"]):
             self.n_total_epochs += 1
             running_losses = []
-            print("ErrorPredictor training epoch", epoch)
+            if epoch % 100 == 0:
+                print("ErrorPredictor training epoch", epoch)
 
             for step, (features, agent1_labels, agent2_labels) in enumerate(self.trainloader):
                 self.optimizer.zero_grad()
@@ -160,7 +175,7 @@ class ErrorPredictorTrainer:
                 prediction_errors = np.array(prediction_errors)
                 prediction_percent_errors = prediction_errors / (self.datasets[dataset_type].agent1_label_max - self.datasets[dataset_type].agent1_label_min) 
 
-                wandb.log({
+                self.accelerator.log({
                     f"{self.name}_{dataset_type}_mean_error" : prediction_errors.mean(),
                     f"{self.name}_{dataset_type}_mean_percent_error" : prediction_percent_errors.mean(),
                     f"{self.name}_{dataset_type}_samples_with_under_10%_error" : (prediction_percent_errors < 0.1).sum() / predicted_agent1_labels.shape[0],
