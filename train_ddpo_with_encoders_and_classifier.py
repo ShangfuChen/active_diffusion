@@ -19,7 +19,7 @@ from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedback
 from rl4dgm.utils.query_generator import EvaluationQueryGenerator
 from rl4dgm.models.mydatasets import TripletDataset, DoubleTripletDataset, FeatureDoubleLabelDataset, HumanDataset
 from rl4dgm.reward_predictor_trainers.encoder_trainers import TripletEncoderTrainer, DoubleTripletEncoderTrainer
-from rl4dgm.reward_predictor_trainers.reward_predictor_trainers import ErrorPredictorTrainer
+from rl4dgm.reward_predictor_trainers.reward_predictor_trainers import RewardClassifierTrainer
 
 logger = get_logger(__name__)
 
@@ -107,10 +107,10 @@ def main(cfg: TrainerConfig) -> None:
     print("...done\n")
     
     print("Initializing error predictor trainer...")
-    error_predictor_trainer = ErrorPredictorTrainer(
+    reward_classifier_trainer = RewardClassifierTrainer(
         trainset=None,
         testset=None,
-        config_dict=dict(cfg.error_predictor_conf),
+        config_dict=dict(cfg.multiclass_classifier_conf),
         seed=cfg.ddpo_conf.seed,
         accelerator=accelerator,
     )
@@ -131,8 +131,12 @@ def main(cfg: TrainerConfig) -> None:
             feedback_type="score-one",
             preference_function=PickScore,
         )
+    # setup query config
+    if cfg.query_conf.query_type == "random":
+        query_kwargs = {"n_feedbacks_per_query" : cfg.query_conf.n_feedback_per_query}
+    elif cfg.query_conf.query_type == "perplexity":
+        query_kwargs = {"thresh" : cfg.query_conf.perplexity_thresh}
     high_reward_latents = None
-    
     
     ############################################################
     # Initialize human dataset to accumulate
@@ -172,6 +176,9 @@ def main(cfg: TrainerConfig) -> None:
         if ai_reward_min is None or ai_rewards.min() < ai_reward_min:
             ai_reward_min = ai_rewards.min()
 
+        # update number of AI feedback collected
+        n_total_ai_feedback += ai_rewards.shape[0]
+
         sd_features = torch.flatten(all_latents[:,-1,:,:,:], start_dim=1).float()
         print("Sampled from SD model and flattened featuers to ", sd_features.shape)
 
@@ -180,10 +187,19 @@ def main(cfg: TrainerConfig) -> None:
         ############################################################
         print("Begin active query")
         # choose indices to query
+        if cfg.query_conf.query_type == "perplexity":
+            # get human and aia encodings
+            with torch.no_grad():
+                human_encodings = human_encoder_trainer.model(sd_features)
+                ai_encodings = ai_encoder_trainer.model(sd_features)
+                human_and_ai_encodings = torch.cat([human_encodings, ai_encodings], dim=1)
+                query_kwargs["probs"] = reward_classifier_trainer.model(human_and_ai_encodings).cpu()
+
         query_indices = query_generator.get_query_indices(
             indices=np.arange(samples.shape[0]), 
             query_type=cfg.query_conf.query_type,
-            n_queries=cfg.query_conf.n_feedbacks_per_query,
+            # n_queries=cfg.query_conf.n_feedbacks_per_query,
+            **query_kwargs,
         )
 
         # get human rewards
@@ -202,12 +218,12 @@ def main(cfg: TrainerConfig) -> None:
             if human_reward_min is None or human_rewards.min() < human_reward_min:
                 human_reward_min = human_rewards.min()
 
-            #### TESTING - normalize to 1-10 
-            scale = (9 - 0) / (human_reward_max - human_reward_min)
-            human_rewards = ((human_rewards - human_reward_min) * scale) 
-            human_rewards = torch.round(human_rewards)
-            human_rewards = torch.clamp(human_rewards, 0, 9)
-            #### TESTING - normalize to 1-10 
+            if cfg.query_conf.feedback_agent == "ai":
+                # if simulating human feedback with AI, normalize and discretize rewards to 0-9
+                scale = (9 - 0) / (human_reward_max - human_reward_min)
+                human_rewards = ((human_rewards - human_reward_min) * scale) 
+                human_rewards = torch.round(human_rewards)
+                human_rewards = torch.clamp(human_rewards, 0, 9)
             
             # add to human dataset
             human_dataset.add_data(
@@ -281,9 +297,8 @@ def main(cfg: TrainerConfig) -> None:
                 agent2_labels=human_dataset.ai_rewards,
                 device=accelerator.device,
             )
-            error_predictor_trainer.initialize_dataloaders(trainset=error_predictor_trainset)
-            error_predictor_trainer.train_model()
-            # error_predictor_trainer.train_model_ce()
+            reward_classifier_trainer.initialize_dataloaders(trainset=error_predictor_trainset)
+            reward_classifier_trainer.train_model()
 
             # clear the human_dataset
             human_dataset.clear_data()
@@ -299,11 +314,12 @@ def main(cfg: TrainerConfig) -> None:
 
         print("\nComputing final rewards")
         final_rewards = torch.zeros(sd_features.shape[0])
-        final_rewards[query_indices] = human_rewards 
+        if query_indices.shape[0] > 0:
+            final_rewards[query_indices] = human_rewards 
         ai_indices = np.setdiff1d(np.arange(sd_features.shape[0]), np.array(query_indices)) # feature indices where AI reward is used
 
         with torch.no_grad():
-            predictions = error_predictor_trainer.model(human_and_ai_encodings)
+            predictions = reward_classifier_trainer.model(human_and_ai_encodings)
 
         if ai_indices.shape[0] > 0:
 
@@ -322,31 +338,19 @@ def main(cfg: TrainerConfig) -> None:
             mean_human_reward = torch.cat((human_rewards, gnd_truth_human_rewards)).mean()
 
             # compare prediction to ground truth
-            if cfg.error_predictor_conf.model_type == "multiclass_classifier":
-                #### TESTING - normalize to 1-10, round and clip
+            if cfg.query_conf.feedback_agent == "ai":
                 scale = (9 - 0) / (human_reward_max - human_reward_min)
                 gnd_truth_human_rewards = ((gnd_truth_human_rewards - human_reward_min) * scale) 
                 gnd_truth_human_rewards = torch.round(gnd_truth_human_rewards)
                 gnd_truth_human_rewards = torch.clamp(gnd_truth_human_rewards, 0, 9)
-                #### TESTING - normalize to 1-10, round and clip
-                
-                reward_prediction = (torch.argmax(predictions, dim=1)).cpu()
-                final_rewards[ai_indices] = reward_prediction[ai_indices].float()
-                
-                human_reward_prediction_error = torch.abs(reward_prediction[ai_indices] - gnd_truth_human_rewards)
-                human_reward_predicton_percent_error = human_reward_prediction_error / (human_reward_max - human_reward_min)
-                print("predicted human rewards", reward_prediction)
-
-            elif cfg.error_predictor_conf.model_type == "error_predictor":
-                predictions = torch.flatten(predictions)
-                corrected_ai_rewards = ai_rewards[ai_indices].cpu() + predictions[ai_indices].cpu()
-                final_rewards[ai_indices] = corrected_ai_rewards
-                print("Original AI rewards", ai_rewards[ai_indices])
-                print("Corrected AI rewards", corrected_ai_rewards)
-
-                human_reward_prediction_error = torch.abs(gnd_truth_human_rewards - corrected_ai_rewards) 
-                human_reward_predicton_percent_error = human_reward_prediction_error / (human_reward_max - human_reward_min)
-
+            
+            reward_prediction = (predictions > 0.5).cumprod(axis=1).sum(axis=1) - 1
+            reward_prediction = reward_prediction.cpu()
+            final_rewards[ai_indices] = reward_prediction[ai_indices].float()
+            
+            human_reward_prediction_error = torch.abs(reward_prediction[ai_indices] - gnd_truth_human_rewards)
+            human_reward_predicton_percent_error = human_reward_prediction_error / 10
+            print("predicted human rewards", reward_prediction)
             print("gnd truth human rewards", gnd_truth_human_rewards)
             print("human rewards", human_rewards)
 
@@ -358,6 +362,11 @@ def main(cfg: TrainerConfig) -> None:
                 "under_20%_error_ratio" : (human_reward_predicton_percent_error < 0.2).sum() / ai_indices.shape[0],
                 "under_30%_error_ratio" : (human_reward_predicton_percent_error < 0.3).sum() / ai_indices.shape[0],
                 "mean_human_reward_this_batch" : mean_human_reward,
+                "human_feedback_total" : n_total_human_feedback,
+                "ai_feedback_total" : n_total_ai_feedback,
+                "n_ai_encoder_training" : ai_encoder_trainer.n_calls_to_train,
+                "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
+                "n_reward_predictor_training" : reward_classifier_trainer.n_calls_to_train,
             })
 
         print("Got final rewards", final_rewards)
@@ -367,12 +376,17 @@ def main(cfg: TrainerConfig) -> None:
         ############################################################
         # Train SD via DDPO
         ############################################################
-        print("Training DDPO...")
-        ddpo_trainer.train_from_reward_labels(
-            raw_rewards=final_rewards,
-            logger=logger,
-            epoch=loop,
-        )
+        if human_encoder_trainer.n_calls_to_train >= cfg.human_encoder_conf.n_warmup_epochs:            
+            assert reward_classifier_trainer.n_calls_to_train == human_encoder_trainer.n_calls_to_train, \
+                f"number of train calls to human encoder {human_encoder_trainer.n_calls_to_train} and error predictor {reward_classifier_trainer.n_calls_to_train} does not match!"
+            print("Training DDPO...")
+            ddpo_trainer.train_from_reward_labels(
+                raw_rewards=final_rewards,
+                logger=logger,
+                epoch=loop,
+            )
+        else:
+            print(f"Human encoder and error predictor warmup has not completed. Skipping DDPO training. Warmup step {human_encoder_trainer.n_calls_to_train}/{cfg.human_encoder_conf.n_warmup_epochs}")
 
 
         # # Batch normalization

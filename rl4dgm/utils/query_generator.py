@@ -16,6 +16,8 @@ class EvaluationQueryGenerator:
             "random" : self._random_queries,
             "all" : self._all_queries,
             "prob_thresh" : self._prob_thresh_queries,
+            "perplexity" : self._perplexity_queries,
+
         }
         np.random.seed(seed)
 
@@ -73,14 +75,17 @@ class EvaluationQueryGenerator:
         queries = indices[max_prob < thresh]
         return queries
 
-    def _perplexity_queries(self, indices, **kwargs): # TODO
+    def _perplexity_queries(self, indices, **kwargs):
         """
-        probabilities (torch.Tensor) : (n_indices, n_classes) tensor of probabilities
-        query_thresh (float) : samples with perplexity values above this thresh will be queried
+        probs (torch.Tensor) : (n_indices, n_classes) tensor of probabilities
+        thresh (float) : samples with perplexity values above this thresh will be queried
         """
-        probabilities = kwargs["probabilities"].cpu()
-        query_thresh = kwargs["query_thresh"]
-        # compute entropy
+        probs = kwargs["probs"]
+        thresh = kwargs["thresh"]
+        entropy = -(torch.log(probs) * probs).sum(dim=1)
+        perplexity = torch.exp(entropy)
+        print("perplexity", perplexity)
+        return indices[perplexity > thresh]
 
 
 class PreferenceQueryGenerator:

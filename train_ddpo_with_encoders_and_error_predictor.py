@@ -172,6 +172,9 @@ def main(cfg: TrainerConfig) -> None:
         if ai_reward_min is None or ai_rewards.min() < ai_reward_min:
             ai_reward_min = ai_rewards.min()
 
+        # update number of AI feedback collected
+        n_total_ai_feedback += ai_rewards.shape[0]
+
         sd_features = torch.flatten(all_latents[:,-1,:,:,:], start_dim=1).float()
         print("Sampled from SD model and flattened featuers to ", sd_features.shape)
 
@@ -359,22 +362,26 @@ def main(cfg: TrainerConfig) -> None:
                 "under_20%_error_ratio" : (human_reward_predicton_percent_error < 0.2).sum() / ai_indices.shape[0],
                 "under_30%_error_ratio" : (human_reward_predicton_percent_error < 0.3).sum() / ai_indices.shape[0],
                 "mean_human_reward_this_batch" : mean_human_reward,
+                "human_feedback_total" : n_total_human_feedback,
+                "ai_feedback_total" : n_total_ai_feedback,
             })
 
         print("Got final rewards", final_rewards)
-
-
         
         ############################################################
         # Train SD via DDPO
         ############################################################
-        print("Training DDPO...")
-        ddpo_trainer.train_from_reward_labels(
-            raw_rewards=final_rewards,
-            logger=logger,
-            epoch=loop,
-        )
-
+        if human_encoder_trainer.n_calls_to_train >= cfg.human_encoder_conf.n_warmup_epochs:            
+            assert error_predictor_trainer.n_calls_to_train == human_encoder_trainer.n_calls_to_train, \
+                f"number of train calls to human encoder {human_encoder_trainer.n_calls_to_train} and error predictor {error_predictor_trainer.n_calls_to_train} does not match!"
+            print("Training DDPO...")
+            ddpo_trainer.train_from_reward_labels(
+                raw_rewards=final_rewards,
+                logger=logger,
+                epoch=loop,
+            )
+        else:
+            print(f"Human encoder and error predictor warmup has not completed. Skipping DDPO training. Warmup step {human_encoder_trainer.n_calls_to_train}/{cfg.human_encoder_conf.n_warmup_epochs}")
 
         # # Batch normalization
         # if cfg.ddpo_conf.normalization:

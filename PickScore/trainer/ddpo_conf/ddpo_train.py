@@ -11,7 +11,7 @@ class DDPOTrainConfig:
 
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
-    run_name: str = ""
+    run_name: str = "perplex_warmup5_minquery20_thresh4"
     # random seed for reproducibility.
     seed: int = 42
     # top-level logging directory for checkpoint saving.

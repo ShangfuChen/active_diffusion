@@ -6,6 +6,8 @@ class QueryConfig:
     # feedback_agent : str = "human"
     feedback_agent : str = "ai"
     # query method
-    query_type : str = "random"
+    query_type : str = "perplexity"
     # number of feedbacks per query
     n_feedbacks_per_query : int = 20
+    perplexity_thresh : float = 4
+

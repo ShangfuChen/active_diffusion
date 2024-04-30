@@ -90,7 +90,8 @@ class MultiClassClassifierModel(nn.Module):
         
         # output layer
         layers.append(nn.Linear(hidden_dims[-1], output_dim))
-        layers.append(nn.Softmax(dim=0))
+        # layers.append(nn.Softmax(dim=0))
+        layers.append(nn.Sigmoid())
 
         self.model = nn.Sequential(*layers).to(device)
         self.float()

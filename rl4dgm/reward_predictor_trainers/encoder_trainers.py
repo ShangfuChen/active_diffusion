@@ -95,6 +95,7 @@ class TripletEncoderTrainer:
 
         self.n_total_epochs = 0
         self.n_total_steps = 0
+        self.n_calls_to_train = 0 # how many times the train function has been called
 
         self.start_time = time.time()
 
@@ -132,6 +133,7 @@ class TripletEncoderTrainer:
         """
         Trains an image encoder using triplet loss
         """
+        self.n_calls_to_train += 1
         n_steps = 0
         for epoch in range(self.config["n_epochs"]):
             self.n_total_epochs += 1
@@ -275,6 +277,7 @@ class DoubleTripletEncoderTrainer:
 
         self.n_total_epochs = 0
         self.n_total_steps = 0
+        self.n_calls_to_train = 0 # how many times the train function has been called
 
         self.start_time = time.time()
 
@@ -311,13 +314,14 @@ class DoubleTripletEncoderTrainer:
         """
         Trains an image encoder using triplet loss
         """
+        self.n_calls_to_train += 1
         n_steps = 0
         
         for epoch in range(self.config["n_epochs"]):
             self.n_total_epochs += 1
             running_losses = []
             if epoch % 100 == 0:
-                print("TripletEncoder training epoch", epoch)
+                print("DoubleTripletEncoder training epoch", epoch)
 
             for step, (anchor_features, _, positive_feature_self, negative_feature_self, other_feature, is_positive) in enumerate(self.trainloader):
                 self.optimizer.zero_grad()
