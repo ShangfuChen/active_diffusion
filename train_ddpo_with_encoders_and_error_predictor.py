@@ -201,13 +201,14 @@ def main(cfg: TrainerConfig) -> None:
                 human_reward_max = human_rewards.max()
             if human_reward_min is None or human_rewards.min() < human_reward_min:
                 human_reward_min = human_rewards.min()
-
-            #### TESTING - normalize to 1-10 
-            scale = (9 - 0) / (human_reward_max - human_reward_min)
-            human_rewards = ((human_rewards - human_reward_min) * scale) 
-            human_rewards = torch.round(human_rewards)
-            human_rewards = torch.clamp(human_rewards, 0, 9)
-            #### TESTING - normalize to 1-10 
+    
+            if cfg.error_predictor_conf.model_type == "multiclass_classifier":
+                #### TESTING - normalize to 1-10 
+                scale = (9 - 0) / (human_reward_max - human_reward_min)
+                human_rewards = ((human_rewards - human_reward_min) * scale) 
+                human_rewards = torch.round(human_rewards)
+                human_rewards = torch.clamp(human_rewards, 0, 9)
+                #### TESTING - normalize to 1-10 
             
             # add to human dataset
             human_dataset.add_data(
