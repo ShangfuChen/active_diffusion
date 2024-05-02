@@ -12,6 +12,7 @@ import os
 import numpy as np
 import torch
 import datetime
+import copy
 
 from ddpo_trainer import DDPOTrainer
 from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne, ColorScoreOne, PickScore
@@ -35,9 +36,9 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/hayano/sampled_images", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
-        os.mkdir(img_save_dir)
+        os.makedirs(img_save_dir, exist_ok=False)
     
     
     n_human_data_for_training = cfg.human_encoder_conf.n_data_needed_for_training # minimum number of human data to accumulate before training the human encoder
@@ -155,7 +156,10 @@ def main(cfg: TrainerConfig) -> None:
     n_total_ai_feedback = 0
     n_total_human_feedback = 0
 
-    for loop in range(60): # TODO put this in config
+    n_ddpo_train_calls = 0 # number of times ddpo training loop was called
+    loop = 0 # number of times the main training loop has run
+    # for loop in range(60): # TODO put this in config
+    while n_ddpo_train_calls < cfg.ddpo_conf.n_outer_loops:
         ############################################################
         # Sample from SD model
         ############################################################
@@ -170,6 +174,7 @@ def main(cfg: TrainerConfig) -> None:
 
         ai_rewards = [elem for sublist in ai_rewards for elem in sublist] # flatten list 
         ai_rewards = torch.tensor(ai_rewards)
+        print("ai rewards", ai_rewards)
         
         if ai_reward_max is None or ai_rewards.max() > ai_reward_max:
             ai_reward_max = ai_rewards.max()
@@ -202,6 +207,19 @@ def main(cfg: TrainerConfig) -> None:
             **query_kwargs,
         )
 
+        # if still in warmup phase and the number of queries is too little, add random indices to query
+        if query_indices.shape[0] < cfg.query_conf.min_n_queries:
+            is_warmup = human_encoder_trainer.n_calls_to_train >= cfg.human_encoder_conf.n_warmup_epochs
+            if is_warmup or not cfg.query_conf.only_enforce_min_queries_during_warmup:
+                n_random_queries = cfg.query_conf.min_n_queries - query_indices.shape[0]
+                indices = np.setdiff1d(np.arange(samples.shape[0]), query_indices)
+                additional_random_query_indices = query_generator.get_query_indices(
+                    indices=indices,
+                    query_type="random",
+                    n_queries=n_random_queries,
+                )
+                query_indices = np.concatenate([query_indices, additional_random_query_indices])
+                     
         # get human rewards
         if query_indices.shape[0] > 0:
             human_rewards = feedback_interface.query_batch(
@@ -210,6 +228,7 @@ def main(cfg: TrainerConfig) -> None:
                 query_indices=np.arange(query_indices.shape[0]),
             )
             human_rewards = torch.tensor(human_rewards)
+            human_rewards_unnormalized = copy.deepcopy(human_rewards) # keep the unnormalized rewards for logging
 
             print("Got human rewards for query indices", query_indices)
 
@@ -224,6 +243,7 @@ def main(cfg: TrainerConfig) -> None:
                 human_rewards = ((human_rewards - human_reward_min) * scale) 
                 human_rewards = torch.round(human_rewards)
                 human_rewards = torch.clamp(human_rewards, 0, 9)
+
             
             # add to human dataset
             human_dataset.add_data(
@@ -333,9 +353,7 @@ def main(cfg: TrainerConfig) -> None:
                 query_indices=np.arange(ai_indices.shape[0]),
             )
             gnd_truth_human_rewards = torch.Tensor(gnd_truth_human_rewards)
-
-            # record average human reward this entire batch 
-            mean_human_reward = torch.cat((human_rewards, gnd_truth_human_rewards)).mean()
+            gnd_truth_human_rewards_unnormalized = copy.deepcopy(gnd_truth_human_rewards) # keep unnormalized rewards for logging
 
             # compare prediction to ground truth
             if cfg.query_conf.feedback_agent == "ai":
@@ -361,12 +379,11 @@ def main(cfg: TrainerConfig) -> None:
                 "under_10%_error_ratio" : (human_reward_predicton_percent_error < 0.1).sum() / ai_indices.shape[0],
                 "under_20%_error_ratio" : (human_reward_predicton_percent_error < 0.2).sum() / ai_indices.shape[0],
                 "under_30%_error_ratio" : (human_reward_predicton_percent_error < 0.3).sum() / ai_indices.shape[0],
-                "mean_human_reward_this_batch" : mean_human_reward,
-                "human_feedback_total" : n_total_human_feedback,
-                "ai_feedback_total" : n_total_ai_feedback,
-                "n_ai_encoder_training" : ai_encoder_trainer.n_calls_to_train,
-                "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
-                "n_reward_predictor_training" : reward_classifier_trainer.n_calls_to_train,
+                # "human_feedback_total" : n_total_human_feedback,
+                # "ai_feedback_total" : n_total_ai_feedback,
+                # "n_ai_encoder_training" : ai_encoder_trainer.n_calls_to_train,
+                # "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
+                # "n_reward_predictor_training" : reward_classifier_trainer.n_calls_to_train,
             })
 
         print("Got final rewards", final_rewards)
@@ -385,8 +402,38 @@ def main(cfg: TrainerConfig) -> None:
                 logger=logger,
                 epoch=loop,
             )
+            n_ddpo_train_calls += 1
         else:
             print(f"Human encoder and error predictor warmup has not completed. Skipping DDPO training. Warmup step {human_encoder_trainer.n_calls_to_train}/{cfg.human_encoder_conf.n_warmup_epochs}")
+
+        # increment loop
+        loop += 1
+
+        # log
+        if query_indices.shape[0] > 0:
+            if ai_indices.shape[0] > 0:
+                # both human and ai were queried
+                mean_human_reward = torch.cat((human_rewards, gnd_truth_human_rewards)).mean()
+                mean_human_reward_unnormalized = torch.cat((human_rewards_unnormalized, gnd_truth_human_rewards_unnormalized)).mean()
+            else:
+                # only human was queried
+                mean_human_reward = human_rewards.mean()
+                mean_human_reward_unnormalized = human_rewards_unnormalized.mean()
+        else:
+            # only ai was queried
+            mean_human_reward = gnd_truth_human_rewards.mean()
+            mean_human_reward_unnormalized = gnd_truth_human_rewards_unnormalized.mean()
+
+        accelerator.log({
+            "human_feedback_total" : n_total_human_feedback,
+            "ai_feedback_total" : n_total_ai_feedback,
+            "n_ai_encoder_training" : ai_encoder_trainer.n_calls_to_train,
+            "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
+            "n_reward_predictor_training" : reward_classifier_trainer.n_calls_to_train,
+            "n_ddpo_training" : n_ddpo_train_calls,
+            "mean_human_reward_this_batch" : mean_human_reward,
+            "unnormalized_mean_human_reward_this_batch" : mean_human_reward_unnormalized,
+        }) 
 
 
         # # Batch normalization
