@@ -17,6 +17,7 @@ class EvaluationQueryGenerator:
             "all" : self._all_queries,
             "prob_thresh" : self._prob_thresh_queries,
             "perplexity" : self._perplexity_queries,
+            "ensemble_std" : self._ensemble_std_queries,
 
         }
         np.random.seed(seed)
@@ -86,6 +87,15 @@ class EvaluationQueryGenerator:
         perplexity = torch.exp(entropy)
         print("perplexity", perplexity)
         return indices[perplexity > thresh]
+    
+    def _ensemble_std_queries(self, indices, **kwargs):
+        """
+        stds (torch.Tensor) : (n_indices) tensor of std values
+        thresh (float) : samples with std values above this thresh will be queried
+        """
+        stds = kwargs["stds"]
+        thresh = kwargs["thresh"]
+        return indices[stds > thresh]
 
 
 class PreferenceQueryGenerator:
