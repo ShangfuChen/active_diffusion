@@ -7,7 +7,7 @@ from accelerate.logging import get_logger
 from PickScore.trainer.configs.configs import TrainerConfig, instantiate_with_cfg
 from accelerate.utils import set_seed, ProjectConfiguration
 
-
+import random
 import os
 import numpy as np
 import torch
@@ -22,8 +22,7 @@ from rl4dgm.reward_predictor_trainers.encoder_trainers import TripletEncoderTrai
 from rl4dgm.reward_predictor_trainers.reward_predictor_trainers import ErrorPredictorTrainer
 
 logger = get_logger(__name__)
-
-
+os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
 ###### Main training loop ######
 @hydra.main(version_base=None, config_path="PickScore/trainer/conf", config_name="config")
@@ -35,7 +34,7 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/hayano/sampled_images", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/shangfu/sampled_images", datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.mkdir(img_save_dir)
     
@@ -45,10 +44,11 @@ def main(cfg: TrainerConfig) -> None:
     # set seed
     np.random.seed(cfg.ddpo_conf.seed)
     torch.manual_seed(cfg.ddpo_conf.seed)
-    
+    random.seed(cfg.ddpo_conf.seed)
     torch.backends.cudnn.benchmark = False
     torch.backends.cudnn.deterministic = True
     torch.cuda.manual_seed(cfg.ddpo_conf.seed)
+    torch.use_deterministic_algorithms(True)
 
     ############################################
     # Initialize accelerator
