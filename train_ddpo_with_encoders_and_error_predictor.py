@@ -179,12 +179,28 @@ def main(cfg: TrainerConfig) -> None:
         # Active query --> get human rewards
         ############################################################
         print("Begin active query")
+        # calculate std using current error prediction models
+        with torch.no_grad():
+            ai_encodings = ai_encoder_trainer.model(sd_features)
+            human_encodings = human_encoder_trainer.model(sd_features)
+        human_and_ai_encodings = torch.cat([human_encodings, ai_encodings], dim=1)
+        # stds = error_predictor_trainer.model.calculate_std(human_and_ai_encodings)
+        
         # choose indices to query
+        # if loop < 100:
         query_indices = query_generator.get_query_indices(
-            indices=np.arange(samples.shape[0]), 
-            query_type=cfg.query_conf.query_type,
-            n_queries=cfg.query_conf.n_feedbacks_per_query,
+        indices=np.arange(samples.shape[0]),
+        query_type="random",
+        n_queries=cfg.query_conf.n_feedbacks_per_query,
         )
+        # else:
+        #     query_indices = query_generator.get_query_indices(
+        #         indices=np.arange(samples.shape[0]), 
+        #         query_type=cfg.query_conf.query_type,
+        #         stds=stds.squeeze().detach().cpu(),
+        #         ratio=0.3,
+        #     )
+        accelerator.log({"n_human_query" : query_indices.shape[0]})
 
         # get human rewards
         if query_indices.shape[0] > 0:
@@ -294,6 +310,7 @@ def main(cfg: TrainerConfig) -> None:
         # Get final rewards for DDPO training
         ############################################################
         # get human encodings for samples in this batch
+
         with torch.no_grad():
             human_encodings = human_encoder_trainer.model(sd_features)
         human_and_ai_encodings = torch.cat([human_encodings, ai_encodings], dim=1)
@@ -338,7 +355,8 @@ def main(cfg: TrainerConfig) -> None:
                 human_reward_predicton_percent_error = human_reward_prediction_error / (human_reward_max - human_reward_min)
                 print("predicted human rewards", reward_prediction)
 
-            elif cfg.error_predictor_conf.model_type == "error_predictor":
+            elif cfg.error_predictor_conf.model_type == "error_predictor" \
+                or cfg.error_predictor_conf.model_type == "uncertainty_error_predictor":
                 predictions = torch.flatten(predictions)
                 corrected_ai_rewards = ai_rewards[ai_indices].cpu() + predictions[ai_indices].cpu()
                 final_rewards[ai_indices] = corrected_ai_rewards
@@ -364,7 +382,7 @@ def main(cfg: TrainerConfig) -> None:
         print("Got final rewards", final_rewards)
 
 
-        
+        # if loop >= 10:
         ############################################################
         # Train SD via DDPO
         ############################################################

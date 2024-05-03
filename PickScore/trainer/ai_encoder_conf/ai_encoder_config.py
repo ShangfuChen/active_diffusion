@@ -14,6 +14,6 @@ class AIEncoderConfig:
     n_hidden_layers : int = 5
     hidden_dims : list[int] = field(default_factory=lambda: [16384, 8192, 2048, 512])
     output_dim : int = 512
-    save_dir : str = "/data/hayano/full_pipeline_debug2/ai_encoder"
+    save_dir : str = "/data/shangfu/full_pipeline_debug2/ai_encoder"
     name : str = "ai_encoder"
 

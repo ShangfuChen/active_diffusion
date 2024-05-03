@@ -48,7 +48,7 @@ class TripletEncoderTrainer:
 
         # create directory to save config and model checkpoints 
         assert "save_dir" in config_dict.keys(), "config_dict is missing key: save_dir"
-        os.makedirs(config_dict["save_dir"], exist_ok=False)
+        os.makedirs(config_dict["save_dir"], exist_ok=True)
             
         # populate the config with default values if values are not provided
         for key in default_config:
@@ -227,7 +227,7 @@ class DoubleTripletEncoderTrainer:
 
         # create directory to save config and model checkpoints 
         assert "save_dir" in config_dict.keys(), "config_dict is missing key: save_dir"
-        os.makedirs(config_dict["save_dir"], exist_ok=False)
+        # os.makedirs(config_dict["save_dir"], exist_ok=False)
             
         # populate the config with default values if values are not provided
         for key in default_config:

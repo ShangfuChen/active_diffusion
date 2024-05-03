@@ -10,7 +10,7 @@ from torch.utils.data import DataLoader
 from accelerate import Accelerator
 
 from rl4dgm.models.mydatasets import FeatureDoubleLabelDataset
-from rl4dgm.models.my_models import LinearModel, MultiClassClassifierModel
+from rl4dgm.models.my_models import LinearModel, UncertaintyModel, MultiClassClassifierModel
 
 class ErrorPredictorTrainer:
     """
@@ -48,6 +48,7 @@ class ErrorPredictorTrainer:
 
         MODEL_TYPES = {
             "error_predictor" : LinearModel,
+            "uncertainty_error_predictor" : UncertaintyModel,
         }
 
         LOSS_TYPES = {
@@ -56,7 +57,7 @@ class ErrorPredictorTrainer:
 
         # create directory to save config and model checkpoints 
         assert "save_dir" in config_dict.keys(), "config_dict is missing key: save_dir"
-        os.makedirs(config_dict["save_dir"], exist_ok=False)
+        os.makedirs(config_dict["save_dir"], exist_ok=True)
         
         # make sure input dimension is defined in the config
         assert "input_dim" in config_dict.keys(), "config_dict is missing key: input_dim"
@@ -249,7 +250,7 @@ class RewardClassifierTrainer:
 
         # create directory to save config and model checkpoints 
         assert "save_dir" in config_dict.keys(), "config_dict is missing key: save_dir"
-        os.makedirs(config_dict["save_dir"], exist_ok=False)
+        # os.makedirs(config_dict["save_dir"], exist_ok=False)
         
         # make sure input dimension is defined in the config
         assert "input_dim" in config_dict.keys(), "config_dict is missing key: input_dim"

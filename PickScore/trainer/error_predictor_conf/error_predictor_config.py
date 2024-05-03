@@ -15,5 +15,5 @@ class ErrorPredictorConfig:
     output_dim : int = 1
     model_type : str = "error_predictor"
     loss_type : str = "MSE"
-    save_dir : str = "/data/hayano/full_pipeline_debug2/error_predictor"
+    save_dir : str = "/data/shangfu/full_pipeline_debug2/error_predictor"
     name : str = "error_predictor"

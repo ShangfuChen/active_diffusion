@@ -16,6 +16,9 @@ class EvaluationQueryGenerator:
             "random" : self._random_queries,
             "all" : self._all_queries,
             "prob_thresh" : self._prob_thresh_queries,
+            "perplexity" : self._perplexity_queries,
+            "ensemble_std" : self._ensemble_std_queries,
+            "ratio_std" : self._ratio_std_queries,
         }
         np.random.seed(seed)
 
@@ -73,14 +76,43 @@ class EvaluationQueryGenerator:
         queries = indices[max_prob < thresh]
         return queries
 
-    def _perplexity_queries(self, indices, **kwargs): # TODO
+    def _perplexity_queries(self, indices, **kwargs):
         """
-        probabilities (torch.Tensor) : (n_indices, n_classes) tensor of probabilities
-        query_thresh (float) : samples with perplexity values above this thresh will be queried
+        probs (torch.Tensor) : (n_indices, n_classes) tensor of probabilities
+        thresh (float) : samples with perplexity values above this thresh will be queried
         """
-        probabilities = kwargs["probabilities"].cpu()
-        query_thresh = kwargs["query_thresh"]
-        # compute entropy
+        probs = kwargs["probs"]
+        thresh = kwargs["thresh"]
+        entropy = -(torch.log(probs) * probs).sum(dim=1)
+        perplexity = torch.exp(entropy)
+        print("perplexity", perplexity)
+        return indices[perplexity > thresh]
+    
+    def _ensemble_std_queries(self, indices, **kwargs):
+        """
+        stds (torch.Tensor) : (n_indices) tensor of std values
+        thresh (float) : samples with std values above this thresh will be queried
+        """
+        stds = kwargs["stds"]
+        thresh = kwargs["thresh"]
+        n_queries = kwargs["n_queries"]
+        uncertain_indices = indices[stds > thresh]
+        if len(uncertain_indices) < n_queries:
+            random_indices = np.random.choice(indices[stds < thresh],
+                                              size=n_queries-len(uncertain_indices),
+                                              replace=False)
+            uncertain_indices = np.concatenate((uncertain_indices, random_indices))
+        return uncertain_indices
+    
+    def _ratio_std_queries(self, indices, **kwargs):
+        """
+        stds (torch.Tensor) : (n_indices) tensor of std values
+        ratio (float) : a partition of samples with higher std will be queried
+        """
+        stds = kwargs["stds"]
+        ratio = kwargs["ratio"]
+        n_quries = int(ratio*indices.shape[0])
+        return np.argpartition(stds, -n_quries)[-n_quries:]
 
 
 class PreferenceQueryGenerator:
@@ -199,5 +231,3 @@ class PreferenceQueryGenerator:
         for query_prompt in query_prompts:
             queries.append(random.sample(list(prompt_to_indices[query_prompt]), k=2))
         return queries, query_prompts
-
-
