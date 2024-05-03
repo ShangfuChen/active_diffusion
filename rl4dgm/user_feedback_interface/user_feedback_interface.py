@@ -118,7 +118,7 @@ class FeedbackInterface:
             self._save_query_image(
                 images=images,
                 prompt=prompt,
-                img_save_path="query_image.png",
+                img_save_path="human_query_image.png",
             )
             # Get feedback
             feedback = self._get_feedback(prompt=prompt, images=images)
@@ -329,6 +329,7 @@ class FeedbackInterface:
 
         # save image
         query_image.save(img_save_path, "PNG")
+        print("saved query image")
 
     def _get_feedback(self,):
         """
@@ -458,12 +459,12 @@ class AIFeedbackInterface(FeedbackInterface):
                 query = [query]
             images = [to_pil_image(image_batch[idx]) for idx in query]
 
-            # Save query image for user
-            self._save_query_image(
-                images=images,
-                prompt=prompt,
-                img_save_path="query_image.png",
-            )
+            # # Save query image for user
+            # self._save_query_image(
+            #     images=images,
+            #     prompt=prompt,
+            #     img_save_path="query_image.png",
+            # )
             # Get feedback
             if self.preference_function.__name__ == 'PickScore':
                 feedback = self._get_feedback(processor=self.processor,

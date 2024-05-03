@@ -21,6 +21,7 @@ class TripletEncoderTrainer:
             config_dict: dict,
             accelerator: Accelerator,
             seed,
+            save_dir,
             trainset: TripletDataset = None,
             testset: TripletDataset = None, 
         ):
@@ -37,7 +38,6 @@ class TripletEncoderTrainer:
             "lr" : 1e-6,
             "n_epochs" : 50,
             "triplet_margin" : 1.0,
-            "save_dir" : None,
             "save_every" : 50,
             "input_dim" : 32768,
             "n_hidden_layers" : 5,
@@ -47,8 +47,9 @@ class TripletEncoderTrainer:
         }
 
         # create directory to save config and model checkpoints 
-        assert "save_dir" in config_dict.keys(), "config_dict is missing key: save_dir"
-        os.makedirs(config_dict["save_dir"], exist_ok=False)
+        # assert "save_dir" in config_dict.keys(), "config_dict is missing key: save_dir"
+        os.makedirs(save_dir, exist_ok=False)
+        self.save_dir = save_dir
             
         # populate the config with default values if values are not provided
         for key in default_config:
@@ -58,9 +59,9 @@ class TripletEncoderTrainer:
         config_dict["hidden_dims"] = [dim for dim in config_dict["hidden_dims"]]
 
         print("Initializing TripletEncoderTrainer with following configs\n", config_dict)
-        with open(os.path.join(config_dict["save_dir"], "train_config.json"), "w") as f:
+        with open(os.path.join(save_dir, "train_config.json"), "w") as f:
             json.dump(config_dict, f)
-            print("saved TripletEncoderTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
+            print("saved TripletEncoderTrainer config to", os.path.join(save_dir, "train_config.json"))
                 
         self.seed = seed
         self.generator = torch.Generator()
@@ -78,7 +79,6 @@ class TripletEncoderTrainer:
             hidden_dims=config_dict["hidden_dims"],
             output_dim=config_dict["output_dim"],
             device=self.device,
-            seed=seed,
         )
         self.trainset = trainset
         self.testset = testset
@@ -163,7 +163,7 @@ class TripletEncoderTrainer:
             
             # save checkpoint
             if (self.n_total_epochs > 0) and (self.n_total_epochs % self.config["save_every"]) == 0:
-                model_save_path = os.path.join(self.config["save_dir"], f"epoch{self.n_total_epochs}.pt")
+                model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
                 torch.save(self.model.state_dict(), model_save_path)
                 print("TripletEncoder model checkpoint saved to", model_save_path)
 
@@ -198,6 +198,7 @@ class DoubleTripletEncoderTrainer:
             self, 
             config_dict: dict,
             seed,
+            save_dir,
             accelerator: Accelerator,
             trainset: DoubleTripletDataset = None,
             testset: DoubleTripletDataset = None, 
@@ -214,7 +215,6 @@ class DoubleTripletEncoderTrainer:
             "shuffle" : True,
             "lr" : 1e-6,
             "n_epochs" : 50,
-            "save_dir" : None,
             "save_every" : 50,
             "agent1_triplet_margin" : 1.0,
             "agent2_triplet_margin" : 1.0,
@@ -228,9 +228,9 @@ class DoubleTripletEncoderTrainer:
         }
 
         # create directory to save config and model checkpoints 
-        assert "save_dir" in config_dict.keys(), "config_dict is missing key: save_dir"
-        os.makedirs(config_dict["save_dir"], exist_ok=False)
-            
+        os.makedirs(save_dir, exist_ok=False)
+        self.save_dir = save_dir
+        
         # populate the config with default values if values are not provided
         for key in default_config:
             if key not in config_dict.keys():
@@ -239,9 +239,9 @@ class DoubleTripletEncoderTrainer:
         config_dict["hidden_dims"] = [dim for dim in config_dict["hidden_dims"]]
 
         print("Initializing DoubleTripletEncoderTrainer with following configs\n", config_dict)
-        with open(os.path.join(config_dict["save_dir"], "train_config.json"), "w") as f:
+        with open(os.path.join(save_dir, "train_config.json"), "w") as f:
             json.dump(config_dict, f)
-            print("saved DoubleTripletEncoderTrainer config to", os.path.join(config_dict["save_dir"], "train_config.json"))
+            print("saved DoubleTripletEncoderTrainer config to", os.path.join(save_dir, "train_config.json"))
         
         self.seed = seed
         self.generator = torch.Generator()
@@ -259,7 +259,6 @@ class DoubleTripletEncoderTrainer:
             hidden_dims=config_dict["hidden_dims"],
             output_dim=config_dict["output_dim"],
             device=self.device,
-            seed=seed,
         )
         self.trainset = trainset
         self.testset = testset
@@ -369,7 +368,7 @@ class DoubleTripletEncoderTrainer:
 
             # save checkpoint
             if (self.n_total_epochs > 0) and (self.n_total_epochs % self.config["save_every"]) == 0:
-                model_save_path = os.path.join(self.config["save_dir"], f"epoch{self.n_total_epochs}.pt")
+                model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
                 torch.save(self.model.state_dict(), model_save_path)
                 print("DoubleTripletEncoder model checkpoint saved to", model_save_path)
 

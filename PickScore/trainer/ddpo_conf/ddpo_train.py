@@ -8,10 +8,15 @@ import ml_collections
 @dataclass
 class DDPOTrainConfig:
     # config = ml_collections.ConfigDict()
+    n_outer_loops: int = 60 # number of times ddpo train should be called
 
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
-    run_name: str = "perplex_warmup5_minquery20_thresh4"
+    # run_name: str = "ensemble10_voting_warmup2_dynamicthresh0_05_normalizedpickscore"
+    run_name: str = "ensemble10_voting_warmup2_random20_human"
+
+    save_dir: str = "/data/hayano"
+
     # random seed for reproducibility.
     seed: int = 42
     # top-level logging directory for checkpoint saving.
@@ -49,7 +54,7 @@ class DDPOTrainConfig:
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
     sample_num_steps: int = 20
-    # sample_num_steps: int = 5
+    # sample_num_steps: int = 1
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
     sample_eta: float = 1.0
@@ -113,6 +118,7 @@ class DDPOTrainConfig:
     # checkpoint path for pickscore model
     # reward_fn: str = "jpeg_compressibility"
     # reward_fn: str = "color_score"
+    # reward_fn: str = "color_score_09_discrete"
     reward_fn: str = "aesthetic_score"
     # reward_fn: str = "pickscore"
     ckpt_path: str = "ddpo/trained_reward_model/checkpoint-final"

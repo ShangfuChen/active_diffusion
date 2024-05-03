@@ -895,7 +895,9 @@ class DDPOTrainer:
                     leave=False,
                     disable=not self.accelerator.is_local_main_process,
                 ):
-                    j = random.randint(0, num_timesteps-1)
+                    # j = random.randint(0, num_timesteps-1)
+                    j = num_timesteps - 1 - k # remove randomness for reproducibility
+
                     with self.accelerator.accumulate(self.unet):
                         with self.autocast():
                             if self.config.train_cfg:
