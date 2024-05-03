@@ -13,7 +13,8 @@ class DDPOTrainConfig:
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
     # run_name: str = "ensemble10_voting_warmup2_dynamicthresh0_05_normalizedpickscore"
-    run_name: str = "ensemble10_voting_warmup2_random20_human"
+    run_name: str = "ensemble10_voting_warmup1_dynamicthresh0_01_normalizedPS_run2"
+    # run_name : str = "debug_realhuman"
 
     save_dir: str = "/data/hayano"
 

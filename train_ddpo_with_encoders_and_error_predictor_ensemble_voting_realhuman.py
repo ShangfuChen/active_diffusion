@@ -25,7 +25,7 @@ from rl4dgm.reward_predictor_trainers.reward_predictor_trainers import ErrorPred
 logger = get_logger(__name__)
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
 
-
+# MODIFYING FOR HUMAN FEEDBACK #
 ###### Main training loop ######
 @hydra.main(version_base=None, config_path="PickScore/trainer/conf", config_name="config")
 def main(cfg: TrainerConfig) -> None:
@@ -34,6 +34,8 @@ def main(cfg: TrainerConfig) -> None:
     print("Config", cfg)
     print("\n\n", cfg.dataset.dataset_name)
     print("-"*50)
+    
+    assert cfg.query_conf.feedback_agent == "human", "Make sure feedback agent is set to human"
 
     # create directories to save sampled images
     img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
@@ -42,7 +44,8 @@ def main(cfg: TrainerConfig) -> None:
     
     
     n_human_data_for_training = cfg.human_encoder_conf.n_data_needed_for_training # minimum number of human data to accumulate before training the human encoder
-    
+    is_enough_human_data = False
+
     # set seed
     np.random.seed(cfg.ddpo_conf.seed)
     torch.manual_seed(cfg.ddpo_conf.seed)
@@ -200,7 +203,7 @@ def main(cfg: TrainerConfig) -> None:
         # Active query --> get human rewards
         ############################################################
         print("Begin active query")
-        if loop == 0:
+        if loop == 0 and cfg.query_conf.query_everything_fisrt_iter:
             # if first iteration, query everything
             query_indices = np.arange(sd_features.shape[0])
             n_active_query_indices = query_indices.shape[0]
@@ -254,7 +257,7 @@ def main(cfg: TrainerConfig) -> None:
                 image_batch=samples[query_indices],
                 query_indices=np.arange(query_indices.shape[0]),
             )
-            human_rewards = torch.tensor(human_rewards)
+            human_rewards = torch.tensor(human_rewards).float()
 
             print("Got human rewards for query indices", query_indices)
             print("human rewards", human_rewards)
@@ -278,6 +281,10 @@ def main(cfg: TrainerConfig) -> None:
         else:
             print("No samples to query human for this batch")        
         
+        # decide if human encoder and reward predictor should be trained this loop
+        is_enough_human_data = human_dataset.n_data >= n_human_data_for_training
+
+
         ############################################################
         # Train AI encoder
         ############################################################
@@ -297,17 +304,16 @@ def main(cfg: TrainerConfig) -> None:
         with torch.no_grad():
             ai_encodings = ai_encoder_trainer.model(sd_features)
         
-        ############################ If we have enough human data to train on ############################
-        if human_dataset.n_data >= n_human_data_for_training:
 
+        ############################################################
+        # Train human encoder
+        ############################################################
+        if is_enough_human_data:
             # get up-to-date human and AI encodings for the features in the human dataset
             with torch.no_grad():
                 re_encoded_human_features = human_encoder_trainer.model(human_dataset.sd_features)
                 re_encoded_ai_features = ai_encoder_trainer.model(human_dataset.sd_features)
             
-            ############################################################
-            # Train human encoder
-            ############################################################
             # make a dataset
             print("\nPreparing dataset for human encoder training")
             human_encoder_trainset = DoubleTripletDataset(
@@ -323,10 +329,23 @@ def main(cfg: TrainerConfig) -> None:
             )
             human_encoder_trainer.initialize_dataloaders(trainset=human_encoder_trainset)
             human_encoder_trainer.train_model()
+            
+        # get encodings from human encoder
+        with torch.no_grad():
+            human_encodings = human_encoder_trainer.model(sd_features)
+        
+        # concatenate human and ai encodings for this batch
+        human_and_ai_encodings = torch.cat([human_encodings, ai_encodings], dim=1)
 
-            ############################################################
-            # Train error predictor
-            ############################################################
+        # if using real human feedback, make reward prediction before training predictor on the new data (for test accuracy)
+        if cfg.query_conf.feedback_agent == "human":
+            with torch.no_grad():
+                real_human_prediction = reward_predictor_trainer.model(human_and_ai_encodings)
+
+        ############################################################
+        # Train error predictor
+        ############################################################
+        if is_enough_human_data:
             # make a dataset
             print("\nPreparing dataset for error predictor training")
             # get ai encodings for the features in the human data
@@ -342,59 +361,28 @@ def main(cfg: TrainerConfig) -> None:
 
             # clear the human_dataset
             human_dataset.clear_data()
-        ############################ If we have enough human data to train on ############################
 
         ############################################################
         # Get final rewards for DDPO training
         ############################################################
-        # get human encodings for samples in this batch
-        with torch.no_grad():
-            human_encodings = human_encoder_trainer.model(sd_features)
-        human_and_ai_encodings = torch.cat([human_encodings, ai_encodings], dim=1)
-
         print("\nComputing final rewards")
         final_rewards = torch.zeros(sd_features.shape[0])
-        final_rewards[query_indices] = human_rewards 
         ai_indices = np.setdiff1d(np.arange(sd_features.shape[0]), np.array(query_indices)) # feature indices where AI reward is used
 
+        # get error predictions
         with torch.no_grad():
             predictions = reward_predictor_trainer.model(human_and_ai_encodings)
 
-        # if using dummy human, get feedback for samples queried to the human for evaluation
-        if (ai_indices.shape[0] > 0) and cfg.query_conf.feedback_agent == "ai":
-            ############################################################
-            # Get final rewards for DDPO training
-            ############################################################
-            # get ground truth human rewards
-            gnd_truth_human_rewards = feedback_interface.query_batch(
-                prompts=["an aesthetic cat"]*ai_indices.shape[0],
-                image_batch=samples[ai_indices],
-                query_indices=np.arange(ai_indices.shape[0]),
-            )
-            gnd_truth_human_rewards = torch.Tensor(gnd_truth_human_rewards)
+        # correct the ai feedback
+        corrected_ai_rewards = ai_rewards[ai_indices].cpu() + predictions[ai_indices].cpu()
+        print("Original AI rewards", ai_rewards[ai_indices])
+        print("Corrected AI rewards", corrected_ai_rewards)
 
-            predictions = torch.flatten(predictions)
-            corrected_ai_rewards = ai_rewards[ai_indices].cpu() + predictions[ai_indices].cpu()
-            final_rewards[ai_indices] = corrected_ai_rewards
-            print("Original AI rewards", ai_rewards[ai_indices])
-            print("Corrected AI rewards", corrected_ai_rewards)
-
-            human_reward_prediction_error = torch.abs(gnd_truth_human_rewards - corrected_ai_rewards) 
-            human_reward_prediction_percent_error = human_reward_prediction_error / (human_reward_max - human_reward_min)
-
-            print("gnd truth human rewards", gnd_truth_human_rewards)
-
-            accelerator.log({
-                "n_corrected_feedback" : ai_indices.shape[0],
-                "human_reward_prediction_mean_error" : human_reward_prediction_error.mean(),
-                "human_reward_prediction_mean_percent_error" : human_reward_prediction_percent_error.mean(),
-                "under_10%_error_ratio" : (human_reward_prediction_percent_error < 0.1).sum() / ai_indices.shape[0],
-                "under_20%_error_ratio" : (human_reward_prediction_percent_error < 0.2).sum() / ai_indices.shape[0],
-                "under_30%_error_ratio" : (human_reward_prediction_percent_error < 0.3).sum() / ai_indices.shape[0],
-            })
-
+        # compute final rewards
+        final_rewards[ai_indices] = corrected_ai_rewards
+        final_rewards[query_indices] = human_rewards
         print("Got final rewards", final_rewards)
-        
+
         ############################################################
         # Train SD via DDPO
         ############################################################
@@ -414,29 +402,76 @@ def main(cfg: TrainerConfig) -> None:
         # increment loop
         loop += 1
 
-        # log
-        if query_indices.shape[0] > 0:
-            if ai_indices.shape[0] > 0:
-                # both human and ai were queried
-                mean_human_reward = torch.cat((human_rewards, gnd_truth_human_rewards)).mean()
+
+        ############################################################
+        # Evaluation and logging
+        ############################################################
+        # if using dummy human, get ground truth feedback for samples not queried to the human for evaluation
+        if (ai_indices.shape[0] > 0) and cfg.query_conf.feedback_agent == "ai": # TODO - not tested
+            # get ground truth human rewards
+            gnd_truth_human_rewards = feedback_interface.query_batch(
+                prompts=["an aesthetic cat"]*ai_indices.shape[0],
+                image_batch=samples[ai_indices],
+                query_indices=np.arange(ai_indices.shape[0]),
+            )
+            gnd_truth_human_rewards = torch.Tensor(gnd_truth_human_rewards)
+            print("gnd truth human rewards", gnd_truth_human_rewards)
+
+            human_reward_prediction_error = torch.abs(gnd_truth_human_rewards - corrected_ai_rewards) 
+            human_reward_prediction_percent_error = human_reward_prediction_error / (human_reward_max - human_reward_min)
+
+            if query_indices.shape[0] > 0:
+                if ai_indices.shape[0] > 0:
+                    # both human and ai were queried
+                    mean_human_reward = torch.cat((human_rewards, gnd_truth_human_rewards)).mean()
+                else:
+                    # only human was queried
+                    mean_human_reward = human_rewards.mean()
             else:
-                # only human was queried
-                mean_human_reward = human_rewards.mean()
-        else:
-            # only ai was queried
-            mean_human_reward = gnd_truth_human_rewards.mean()
+                # only ai was queried
+                mean_human_reward = gnd_truth_human_rewards.mean()
 
-        accelerator.log({
-            "human_feedback_total" : n_total_human_feedback,
-            "ai_feedback_total" : n_total_ai_feedback,
-            "n_active_queries" : n_active_query_indices,
-            "n_ai_encoder_training" : ai_encoder_trainer.n_calls_to_train,
-            "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
-            "n_reward_predictor_training" : reward_predictor_trainer.n_calls_to_train,
-            "n_ddpo_training" : n_ddpo_train_calls,
-            "mean_human_reward_this_batch" : mean_human_reward,
-        }) 
+            accelerator.log({
+                "loop": loop,
+                "human_reward_prediction_mean_error" : human_reward_prediction_error.mean(),
+                "human_reward_prediction_mean_percent_error" : human_reward_prediction_percent_error.mean(),
+                "under_10%_error_ratio" : (human_reward_prediction_percent_error < 0.1).sum() / ai_indices.shape[0],
+                "under_20%_error_ratio" : (human_reward_prediction_percent_error < 0.2).sum() / ai_indices.shape[0],
+                "under_30%_error_ratio" : (human_reward_prediction_percent_error < 0.3).sum() / ai_indices.shape[0],
+                "human_feedback_total" : n_total_human_feedback,
+                "ai_feedback_total" : n_total_ai_feedback,
+                "n_active_queries" : n_active_query_indices,
+                "n_ai_encoder_training" : ai_encoder_trainer.n_calls_to_train,
+                "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
+                "n_reward_predictor_training" : reward_predictor_trainer.n_calls_to_train,
+                "n_ddpo_training" : n_ddpo_train_calls,
+                "mean_human_reward_this_batch" : mean_human_reward,
+            }) 
 
+
+        if cfg.query_conf.feedback_agent == "human": # TODO : need check for case where human was not queried
+            # compute reward prediction accuracy
+            real_human_reward_prediction_error = torch.abs(human_rewards - (ai_rewards[query_indices].cpu() + real_human_prediction[query_indices].cpu()))
+            real_human_reward_prediction_percent_error = real_human_reward_prediction_error / 10 # TODO - change if needed
+
+            accelerator.log({
+                "loop": loop,
+                "human_reward_prediction_mean_error" : real_human_reward_prediction_error.mean(),
+                "human_reward_prediction_mean_percent_error" : real_human_reward_prediction_percent_error.mean(),
+                "under_10%_error_ratio" : (real_human_reward_prediction_percent_error < 0.1).sum() / query_indices.shape[0],
+                "under_20%_error_ratio" : (real_human_reward_prediction_percent_error < 0.2).sum() / query_indices.shape[0],
+                "under_30%_error_ratio" : (real_human_reward_prediction_percent_error < 0.3).sum() / query_indices.shape[0],
+                "human_feedback_total" : n_total_human_feedback,
+                "ai_feedback_total" : n_total_ai_feedback,
+                "n_active_queries" : n_active_query_indices,
+                "n_ai_encoder_training" : ai_encoder_trainer.n_calls_to_train,
+                "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
+                "n_reward_predictor_training" : reward_predictor_trainer.n_calls_to_train,
+                "n_ddpo_training" : n_ddpo_train_calls,
+                "mean_human_reward_this_batch" : human_rewards.mean(),
+            }) 
+        # log
+        
         # # Batch normalization
         # if cfg.ddpo_conf.normalization:
         #     human_rewards = np.array(human_rewards)
@@ -451,6 +486,7 @@ def main(cfg: TrainerConfig) -> None:
 
         
         # ddpo_trainer.train_from_reward_labels(logger=logger, epoch=loop, raw_rewards=final_rewards)
+
 
 
 if __name__ == "__main__":

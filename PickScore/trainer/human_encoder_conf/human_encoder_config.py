@@ -20,5 +20,6 @@ class HumanEncoderConfig:
     output_dim : int = 512
     # save_dir : str = "/data/hayano/ensemble_warmup5_minquery20_dynamicthresh_0_6_minq10always_unnormalizedpickscore2/human_encoder"
     n_data_needed_for_training : int = 20
-    n_warmup_epochs: int = 2
+    # n_data_needed_for_training : int = 10
+    n_warmup_epochs: int = 1
     name : str = "human_encoder"

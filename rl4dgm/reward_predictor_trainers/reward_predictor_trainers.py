@@ -810,8 +810,9 @@ class ErrorPredictorEnsembleTrainerVoting:
         }
 
         # create directory to save config and model checkpoints 
-        for i in range(config_dict["n_models"]):
-            os.makedirs(os.path.join(save_dir, f"model{i}"), exist_ok=False)
+        # for i in range(config_dict["n_models"]):
+        #     os.makedirs(os.path.join(save_dir, f"model{i}"), exist_ok=False)
+        os.makedirs(os.path.join(save_dir, f"model0"), exist_ok=False)
         self.save_dir = save_dir
 
         # make sure input dimension is defined in the config
@@ -940,10 +941,15 @@ class ErrorPredictorEnsembleTrainerVoting:
                     })
                 
                 # save checkpoint
-                if (self.n_total_epochs > 0) and (self.n_total_epochs % self.config["save_every"]) == 0:
-                    model_save_path = os.path.join(self.save_dir, f"model{i}", f"epoch{self.n_total_epochs}.pt")
+                if i == 0 and (self.n_total_epochs > 0) and (self.n_total_epochs % self.config["save_every"]) == 0:
+                    model_save_path = os.path.join(self.save_dir, f"model0", f"epoch{self.n_total_epochs}.pt")
                     torch.save(model.state_dict(), model_save_path)
                     print("ErrorPredictor model checkpoint saved to", model_save_path)
+                # # save checkpoint
+                # if (self.n_total_epochs > 0) and (self.n_total_epochs % self.config["save_every"]) == 0:
+                #     model_save_path = os.path.join(self.save_dir, f"model{i}", f"epoch{self.n_total_epochs}.pt")
+                #     torch.save(model.state_dict(), model_save_path)
+                #     print("ErrorPredictor model checkpoint saved to", model_save_path)
 
 
     def eval_model(self):
