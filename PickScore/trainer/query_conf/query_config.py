@@ -14,8 +14,9 @@ class QueryConfig:
     query_everything_fisrt_iter : bool = False
 
     # Only used in random query
-    n_feedback_per_query : int = 20
-    # n_feedback_per_query : int = 10
+    n_feedback_per_query : int = 10
+    # n_feedback_per_query : int = 20
+    # n_feedback_per_query : int = 40
 
     # Only used in active query methods where number of queries vary in each loop.
     # If not enough queries are chosen, choose queries randomly to meet this minimum requirement    
@@ -32,3 +33,7 @@ class QueryConfig:
     # ensemble_thresh_is_hard : bool = False # use fixed value of thresh ensemble_std_thresh. if false use ensemble_dynamic_std_thresh
     ensemble_std_thresh : float = 1.0
     ensemble_dynamic_std_thresh : float = 0.01 # percentage of range of human rewards seen so far
+
+    # Config for using real human feedback
+    use_best_image : bool = True
+    

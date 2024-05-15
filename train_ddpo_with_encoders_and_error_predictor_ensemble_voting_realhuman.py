@@ -134,7 +134,10 @@ def main(cfg: TrainerConfig) -> None:
     # Initialize feedback interfaces
     ############################################
     if cfg.query_conf.feedback_agent == "human":
-        feedback_interface = HumanFeedbackInterface(feedback_type="score-one")
+        feedback_interface = HumanFeedbackInterface(
+            feedback_type="score-one",
+            use_best_image=cfg.query_conf.use_best_image,
+        )
     elif cfg.query_conf.feedback_agent == "ai":
         feedback_interface = AIFeedbackInterface(
             feedback_type="score-one",
