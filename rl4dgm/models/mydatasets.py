@@ -68,7 +68,7 @@ class TripletDatasetWithBestSample(Dataset):
         
         if self.sampling_method == "default":
             positive_indices = torch.nonzero(self.scores > self.scores.mean()).squeeze()
-            negative_indices = torch.nonzero(self.scores > self.scores.mean()).squeeze()
+            negative_indices = torch.nonzero(self.scores < self.scores.mean()).squeeze()
             positive_index = random.choice(positive_indices)
             negative_index = random.choice(negative_indices)
             positive_feature = self.features[positive_index]
