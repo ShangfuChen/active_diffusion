@@ -24,6 +24,58 @@ def get_weighted_sample(weights, k):
         i +=1
     return torch.tensor(indices)
 
+
+class TripletDatasetWithBestSample(Dataset):
+    def __init__(
+        self,
+        features,
+        best_sample_feature,
+        scores,
+        best_sample_score,
+        device,
+        is_train=False,
+        sampling_method="default",
+    ):
+        self.features = features.float().to(device)
+        self.best_sample_feature = best_sample_feature.float().to(device)
+        self.scores = scores.float().to(device)
+        self.best_sample_score = best_sample_score.float().to(device)
+        self.is_train = is_train
+        self.indices = torch.arange(scores.shape[0]).to(device)
+        self.score_range = scores.max() - scores.min()
+        self.sampling_method = sampling_method
+        
+        sampling_methods = [
+            "default",
+        ]
+        assert sampling_method in sampling_methods, f"Sampling method must be one of {sampling_methods}. Got {sampling_method}"
+
+    def __len__(self):
+        return self.features.shape[0]
+
+    def __getitem__(self, idx):
+
+        # print("getitem ", idx)
+        # given index, return anchor, positive, and negative samples
+        
+        # get anchor sample
+        anchor_feature = self.best_sample_feature.squeeze()
+        anchor_score = self.best_sample_score
+
+        ##############################################################################################
+        # Sample positive (and negative) samples randomly from top 10% most (least) similar samples
+        ##############################################################################################
+        
+        if self.sampling_method == "default":
+            positive_indices = torch.nonzero(self.scores > self.scores.mean()).squeeze()
+            negative_indices = torch.nonzero(self.scores > self.scores.mean()).squeeze()
+            positive_index = random.choice(positive_indices)
+            negative_index = random.choice(negative_indices)
+            positive_feature = self.features[positive_index]
+            negative_feature = self.features[negative_index]
+        return anchor_feature, anchor_score, positive_feature, negative_feature
+
+
 class TripletDataset(Dataset):
     def __init__(
         self,
@@ -151,10 +203,10 @@ class DoubleTripletDataset(Dataset):
             score_diff = self.scores_self[self.indices] - anchor_score
             most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
             
-            positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
+            positive_index = random.choice(most_to_least_similar_indices[1:int(0.3*self.features.shape[0])])
             positive_feature_self = self.features[positive_index]
 
-            negative_index = random.choice(most_to_least_similar_indices[int(0.9*self.features.shape[0]):])
+            negative_index = random.choice(most_to_least_similar_indices[int(0.7*self.features.shape[0]):])
             negative_feature_self = self.features[negative_index]
 
         ##############################################################################################
