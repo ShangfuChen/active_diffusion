@@ -13,6 +13,7 @@ import numpy as np
 import torch
 import random
 import datetime
+import pandas as pd
 
 from ddpo_trainer import DDPOTrainer
 from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne, ColorScoreOne, PickScore
@@ -41,7 +42,6 @@ def main(cfg: TrainerConfig) -> None:
     img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir, exist_ok=False)
-    
     
     n_human_data_for_training = cfg.human_encoder_conf.n_data_needed_for_training # minimum number of human data to accumulate before training the human encoder
     is_enough_human_data = False
@@ -129,6 +129,17 @@ def main(cfg: TrainerConfig) -> None:
     # Initialize other components
     ############################################
     query_generator = EvaluationQueryGenerator(seed=cfg.ddpo_conf.seed)
+
+    if cfg.ddpo_conf.save_dataset:
+        df = pd.DataFrame(
+            columns=[
+                "loop",
+                "sd_latent",
+                "human_reward",
+                "ai_reward",
+            ]
+        )
+        df.to_parquet(cfg.ddpo_conf.dataset_save_path)
 
     ############################################
     # Initialize feedback interfaces
@@ -287,6 +298,19 @@ def main(cfg: TrainerConfig) -> None:
         # decide if human encoder and reward predictor should be trained this loop
         is_enough_human_data = human_dataset.n_data >= n_human_data_for_training
 
+        # store data in df
+        if cfg.ddpo_conf.save_dataset:
+            human_reward_data = np.zeros(sd_features.shape[0])
+            human_reward_data[query_indices] = human_rewards
+            human_reward_data[np.setdiff1d(np.arange(sd_features.shape[0]), query_indices)] = None
+            for i in range(sd_features.shape[0]):
+                df.loc[len(df.index)] = [
+                    loop,
+                    np.array(sd_features[i].cpu()),
+                    human_reward_data[i],
+                    ai_rewards[i].item(),
+                ]
+            df.to_parquet(cfg.ddpo_conf.dataset_save_path)
 
         ############################################################
         # Train AI encoder
@@ -473,23 +497,6 @@ def main(cfg: TrainerConfig) -> None:
                 "n_ddpo_training" : n_ddpo_train_calls,
                 "mean_human_reward_this_batch" : human_rewards.mean(),
             }) 
-        # log
-        
-        # # Batch normalization
-        # if cfg.ddpo_conf.normalization:
-        #     human_rewards = np.array(human_rewards)
-        #     human_rewards = (human_rewards - human_rewards.min())/(human_rewards.max() - human_rewards.min()).tolist()
-        #     ai_rewards = np.array(ai_rewards)
-        #     ai_rewards = (ai_rewards - ai_rewards.min())/(ai_rewards.max() - ai_rewards.min()).tolist()
-        
-        # accelerator.log(
-        #     {"AI reward": np.asarray(ai_rewards).mean(),
-        #      "Human reward": np.asarray(human_rewards).mean()}
-        # )
-
-        
-        # ddpo_trainer.train_from_reward_labels(logger=logger, epoch=loop, raw_rewards=final_rewards)
-
 
 
 if __name__ == "__main__":

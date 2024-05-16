@@ -350,65 +350,65 @@ class FeedbackInterface:
             feedback (tuple(float)) : feedback provided by the user (label0, label1)
             prompt (str) : text prompt
         """
+        pass
+        # if self.feedback_args["output_type"] == OutputTypes.BINARY_PREFERENCE:
+        #     img_paths = images.copy()
+        #     if not type(images[0]) == str:
+        #         img_paths[0] = "tmp_im0.jpg"
+        #         img_paths[1] = "tmp_im1.jpg"
+        #         images[0].save(img_paths[0])
+        #         images[1].save(img_paths[1])
 
-        if self.feedback_args["output_type"] == OutputTypes.BINARY_PREFERENCE:
-            img_paths = images.copy()
-            if not type(images[0]) == str:
-                img_paths[0] = "tmp_im0.jpg"
-                img_paths[1] = "tmp_im1.jpg"
-                images[0].save(img_paths[0])
-                images[1].save(img_paths[1])
+        #     are_different = not img_paths[0] == img_paths[1]
+        #     best_image_uid = ""
+        #     created_at = datetime.now()
+        #     has_label = True
+        #     image_0_uid = "0"
+        #     image_0_url = ""
+        #     image_1_uid = "1"
+        #     image_1_url = ""
 
-            are_different = not img_paths[0] == img_paths[1]
-            best_image_uid = ""
-            created_at = datetime.now()
-            has_label = True
-            image_0_uid = "0"
-            image_0_url = ""
-            image_1_uid = "1"
-            image_1_url = ""
+        #     with open(img_paths[0], "rb") as img0:
+        #         jpg_0 = img0.read()
 
-            with open(img_paths[0], "rb") as img0:
-                jpg_0 = img0.read()
+        #     with open(img_paths[1], "rb") as img1:
+        #         jpg_1 = img1.read()
 
-            with open(img_paths[1], "rb") as img1:
-                jpg_1 = img1.read()
-
-            # TODO - there is no option for "no preference"
-            label0, label1 = feedback
-            model0 = ""
-            model1 = ""
-            ranking_id = 0
-            user_id = 0
-            num_example_per_prompt = 1
+        #     # TODO - there is no option for "no preference"
+        #     label0, label1 = feedback
+        #     model0 = ""
+        #     model1 = ""
+        #     ranking_id = 0
+        #     user_id = 0
+        #     num_example_per_prompt = 1
             
-            self.df.loc[len(self.df.index)] = [
-                are_different, best_image_uid, prompt, created_at, has_label,
-                image_0_uid, image_0_url, image_1_uid, image_1_url,
-                jpg_0, jpg_1,
-                label0, label1, model0, model1,
-                ranking_id, user_id, num_example_per_prompt,
-            ]
+        #     self.df.loc[len(self.df.index)] = [
+        #         are_different, best_image_uid, prompt, created_at, has_label,
+        #         image_0_uid, image_0_url, image_1_uid, image_1_url,
+        #         jpg_0, jpg_1,
+        #         label0, label1, model0, model1,
+        #         ranking_id, user_id, num_example_per_prompt,
+        #     ]
         
-        elif self.feedback_args["output_type"] == OutputTypes.SCORE:
-            img_paths = images.copy()
-            if not type(images[0]) == str:
-                img_paths[0] = "tmp_im0.jpg"
-                images[0].save(img_paths[0])
-            with open(img_paths[0], "rb") as img0:
-                jpg_0 = img0.read()
+        # elif self.feedback_args["output_type"] == OutputTypes.SCORE:
+        #     img_paths = images.copy()
+        #     if not type(images[0]) == str:
+        #         img_paths[0] = "tmp_im0.jpg"
+        #         images[0].save(img_paths[0])
+        #     with open(img_paths[0], "rb") as img0:
+        #         jpg_0 = img0.read()
             
-            caption = prompt
-            created_at = datetime.now()
-            has_label = True
-            score = feedback
-            model = ""
+        #     caption = prompt
+        #     created_at = datetime.now()
+        #     has_label = True
+        #     score = feedback
+        #     model = ""
 
-            self.df.loc[len(self.df.index)] = [
-                caption, created_at, has_label,
-                jpg_0,
-                score, model,
-            ]
+        #     self.df.loc[len(self.df.index)] = [
+        #         caption, created_at, has_label,
+        #         jpg_0,
+        #         score, model,
+        #     ]
 
 
 
@@ -733,6 +733,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             pil_images += images
 
             # Get feedback
+            print("Best score so far is: ", self.best_score)
             feedback = self._get_feedback(prompt=prompt, images=images)
             feedbacks.append(feedback)
 
@@ -824,10 +825,10 @@ class HumanFeedbackInterface(FeedbackInterface):
 
             # Get feedback
             if self.is_first_batch and query[0] == best_image_index:
-                print("here")
                 feedback = 5 # TODO - magic number
                 self.best_score = feedback 
             else:
+                print("Best score so far is: ", self.best_score)
                 feedback = self._get_feedback(prompt=prompt, images=images)
             
             feedbacks.append(feedback)

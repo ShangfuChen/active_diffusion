@@ -2,9 +2,14 @@ from dataclasses import dataclass
 
 @dataclass
 class QueryConfig:
-    # type of feedback to use (human or ai)
+    # type of feedback agent to use ("human" or "ai")
     feedback_agent : str = "human"
     # feedback_agent : str = "ai"
+
+    # type of feedback to use (see FeedbackInterface class for available types)
+    # feedback_type : str = "score-one-wrt-best"
+    feedback_type : str = "score-one"
+
     # query method
     # query_type : str = "perplexity"
     query_type : str = "random"
@@ -14,7 +19,7 @@ class QueryConfig:
     query_everything_fisrt_iter : bool = False
 
     # Only used in random query
-    n_feedback_per_query : int = 10
+    n_feedback_per_query : int = 5
     # n_feedback_per_query : int = 20
     # n_feedback_per_query : int = 40
 
@@ -36,4 +41,3 @@ class QueryConfig:
 
     # Config for using real human feedback
     use_best_image : bool = True
-    
