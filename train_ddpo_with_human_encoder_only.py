@@ -11,8 +11,11 @@ from accelerate.utils import set_seed, ProjectConfiguration
 import os
 import numpy as np
 import torch
+import wandb
+import PIL
 import random
 import datetime
+import tempfile
 
 from ddpo_trainer import DDPOTrainer
 from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne, ColorScoreOne, PickScore
@@ -79,16 +82,6 @@ def main(cfg: TrainerConfig) -> None:
     ############################################
     # Initialize trainers
     ############################################
-    print("Initializing error predictor trainer...")
-    reward_predictor_trainer = ErrorPredictorEnsembleTrainerVoting(
-        trainset=None,
-        testset=None,
-        config_dict=dict(cfg.error_predictor_ensemble_conf),
-        seed=cfg.ddpo_conf.seed,
-        accelerator=accelerator,
-        save_dir=os.path.join(cfg.ddpo_conf.save_dir, cfg.ddpo_conf.run_name, "reward_predictor"),
-    )
-    print("...done\n")
     torch.manual_seed(cfg.ddpo_conf.seed) # DONT REMOVE THIS
     
     print("\nInitializing DDPO trainer...")
@@ -127,15 +120,9 @@ def main(cfg: TrainerConfig) -> None:
             preference_function=PickScore,
         )
     # setup query config
+    # random query is the only supported query method now
     if cfg.query_conf.query_type == "random":
         query_kwargs = {"n_queries" : cfg.query_conf.n_feedback_per_query}
-    elif cfg.query_conf.query_type == "ensemble_std":
-        if cfg.query_conf.ensemble_thresh_is_hard:
-            query_kwargs = {"thresh" : cfg.query_conf.ensemble_std_thresh}
-        else:
-            # if using dunamic thresholding, initialize at zero
-            query_kwargs = {"thresh" : 0.0}
-    high_reward_latents = None
     
     ############################################################
     # Initialize human dataset to accumulate
@@ -144,14 +131,10 @@ def main(cfg: TrainerConfig) -> None:
         n_data_to_accumulate=n_human_data_for_training,
         device=accelerator.device,
     )
-    # maximum and minimum human and AI reward values observed so far
-    human_reward_max, human_reward_min = None, None
-    ai_reward_max, ai_reward_min = None, None
     
     #########################################################
     # MAIN TRAINING LOOP
     #########################################################
-    n_total_ai_feedback = 0
     n_total_human_feedback = 0
     best_sample_latent = None
     best_reward = 0
@@ -164,25 +147,11 @@ def main(cfg: TrainerConfig) -> None:
         # Sample from SD model
         ############################################################
         samples, all_latents, prompts, ai_rewards = ddpo_trainer.sample(
-        # samples, all_latents, prompts, ai_rewards = rlcm_trainer.sample(
             logger=logger,
             epoch=loop,
             save_images=True,
             img_save_dir=img_save_dir,
-            high_reward_latents=None) 
-            # high_reward_latents=high_reward_latents) 
-
-        ai_rewards = [elem for sublist in ai_rewards for elem in sublist] # flatten list 
-        ai_rewards = torch.tensor(ai_rewards)
-        print("ai rewards", ai_rewards)
-        
-        if ai_reward_max is None or ai_rewards.max() > ai_reward_max:
-            ai_reward_max = ai_rewards.max()
-        if ai_reward_min is None or ai_rewards.min() < ai_reward_min:
-            ai_reward_min = ai_rewards.min()
-
-        # update number of AI feedback collected
-        n_total_ai_feedback += ai_rewards.shape[0]
+            high_reward_latents=None)
 
         sd_features = torch.flatten(all_latents[:,-1,:,:,:], start_dim=1).float()
         print("Sampled from SD model and flattened featuers to ", sd_features.shape)
@@ -194,7 +163,6 @@ def main(cfg: TrainerConfig) -> None:
         if loop == 0:
             # if first iteration, query everything
             query_indices = np.arange(sd_features.shape[0])
-            n_active_query_indices = query_indices.shape[0]
         
         else:
             query_indices = query_generator.get_query_indices(
@@ -203,7 +171,6 @@ def main(cfg: TrainerConfig) -> None:
                 # n_queries=cfg.query_conf.n_feedbacks_per_query,
                 **query_kwargs,
             )
-            n_active_query_indices = query_indices.shape[0]
             
             # if still in warmup phase and the number of queries is too little, add random indices to query
             if query_indices.shape[0] < cfg.query_conf.min_n_queries:
@@ -220,29 +187,27 @@ def main(cfg: TrainerConfig) -> None:
                     print(f"not enough queries from active query. randomly sampled {n_random_queries}: {query_indices}")
 
         human_rewards = feedback_interface.query_batch(
-            prompts=["an aesthetic cat"]*query_indices.shape[0],
+            prompts=["amusement street"]*query_indices.shape[0],
             image_batch=samples[query_indices],
             query_indices=np.arange(query_indices.shape[0]),
         )
         human_rewards = torch.tensor(human_rewards)
         max_reward_in_batch, index = torch.max(human_rewards, 0)
+        best_index = query_indices[index]
         if max_reward_in_batch > best_reward:
-            best_sample_latent = sd_features[index].unsqueeze(0)
+            best_image = samples[best_index].cpu().numpy().transpose(1, 2, 0) * 255
+            best_image = PIL.Image.fromarray(best_image.astype('uint8'), mode='RGB')
+            best_sample_latent = sd_features[best_index].unsqueeze(0)
             best_reward = max_reward_in_batch
-
+            best_image.save("best_image.png")
         # print("Got human rewards for query indices", query_indices)
         print("human rewards", human_rewards)
-
-        if human_reward_max is None or human_rewards.max() > human_reward_max:
-            human_reward_max = human_rewards.max()
-        if human_reward_min is None or human_rewards.min() < human_reward_min:
-            human_reward_min = human_rewards.min()
         
         # add to human dataset
         human_dataset.add_data(
             sd_features=sd_features[query_indices],
             human_rewards=human_rewards,
-            ai_rewards=ai_rewards[query_indices],
+            ai_rewards=torch.zeros_like(human_rewards),  # A hack for unused AI rewards
         )
         print(f"Added {human_rewards.shape[0]} human data to human dataset. There are {human_dataset.n_data} data in human dataset")
     
@@ -268,7 +233,7 @@ def main(cfg: TrainerConfig) -> None:
             human_encoder_trainer.train_model()
 
             # clear the human_dataset
-            # human_dataset.clear_data()
+            human_dataset.clear_data()
 
         ############################ If we have enough human data to train on ############################
 
@@ -280,10 +245,12 @@ def main(cfg: TrainerConfig) -> None:
             human_encodings = human_encoder_trainer.model(sd_features)
             best_sample_encoding = human_encoder_trainer.model(best_sample_latent)
         print("\nComputing final rewards")
-        ### Similarity with the best sample ###
+        ### Similarity with the best sample ### (for similarity-based reward)
         final_rewards = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
-        
-        ### Ground truth human reward ###
+        final_rewards = (final_rewards+1)/2
+        final_rewards = torch.softmax(final_rewards, dim=0)
+
+        ### Ground truth human reward ### (for query everything)
         # final_rewards = human_rewards
 
         ai_indices = np.setdiff1d(np.arange(sd_features.shape[0]), np.array(query_indices)) # feature indices where AI reward is used
@@ -295,7 +262,7 @@ def main(cfg: TrainerConfig) -> None:
             ############################################################
             # get ground truth human rewards
             gnd_truth_human_rewards = feedback_interface.query_batch(
-                prompts=["an aesthetic cat"]*ai_indices.shape[0],
+                prompts=["amusement street"]*ai_indices.shape[0],
                 image_batch=samples[ai_indices],
                 query_indices=np.arange(ai_indices.shape[0]),
             )
@@ -307,8 +274,6 @@ def main(cfg: TrainerConfig) -> None:
         # Train SD via DDPO
         ############################################################
         if human_encoder_trainer.n_calls_to_train > cfg.human_encoder_conf.n_warmup_epochs:            
-            # assert reward_predictor_trainer.n_calls_to_train == human_encoder_trainer.n_calls_to_train, \
-                # f"number of train calls to human encoder {human_encoder_trainer.n_calls_to_train} and error predictor {reward_predictor_trainer.n_calls_to_train} does not match!"
             print("Training DDPO...")
             ddpo_trainer.train_from_reward_labels(
                 raw_rewards=final_rewards,
@@ -337,10 +302,10 @@ def main(cfg: TrainerConfig) -> None:
         accelerator.log({
             "human_feedback_total" : n_total_human_feedback,
             "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
-            "n_reward_predictor_training" : reward_predictor_trainer.n_calls_to_train,
             "n_ddpo_training" : n_ddpo_train_calls,
             "mean_human_reward_this_batch" : mean_human_reward,
-        }) 
+            "best_score_so_far": best_reward,
+        })
 
 
 if __name__ == "__main__":

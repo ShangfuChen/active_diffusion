@@ -6,7 +6,7 @@ from torch.func import stack_module_state, functional_call
 
 import numpy as np
 
-from torchensemble import VotingRegressor
+# from torchensemble import VotingRegressor
 
 class LinearModel(nn.Module):
     def __init__(
