@@ -11,12 +11,12 @@ class DDPOTrainConfig:
     n_outer_loops: int = 60 # number of times ddpo train should be called
     save_dataset: bool = True
     dataset_save_path: str = "/home/hayano/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
-
+    project_name: str = "reasoning_realhuman_test"
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
     # run_name: str = "ensemble10_voting_warmup2_dynamicthresh0_05_normalizedpickscore"
     # run_name: str = "ensemble10_voting_warmup1_random40_normalizedPS"
-    run_name : str = "debug"
+    run_name : str = "test_realhuman_reasoning"
 
     save_dir: str = "/data/hayano"
 
@@ -56,8 +56,8 @@ class DDPOTrainConfig:
     ###### Sampling ######
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    # sample_num_steps: int = 20
-    sample_num_steps: int = 4
+    sample_num_steps: int = 20
+    # sample_num_steps: int = 4
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
     sample_eta: float = 1.0
@@ -112,7 +112,8 @@ class DDPOTrainConfig:
     # prompt function to use. see `prompts.py` for available prompt functions.
     # prompt_fn: str = "simple_animals"
     # prompt_fn: str = "cute_cats"
-    prompt_fn: str = "ugly_cats"
+    # prompt_fn: str = "ugly_cats"
+    prompt_fn: str = "test_prompt"
     # prompt_fn: str = "cute_animals"
     # kwargs to pass to the prompt function.
 

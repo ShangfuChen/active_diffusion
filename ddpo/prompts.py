@@ -72,6 +72,9 @@ def ugly_cats():
 def cute_animals(n_samples):
     return batch_prompts_from_file("cute_animals.txt", n_samples)
 
+def test_prompt():
+    return from_file("test_prompt.txt")
+
 
 def nouns_activities(nouns_file, activities_file):
     nouns = _load_lines(nouns_file)

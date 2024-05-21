@@ -2,13 +2,10 @@
 
 from collections import defaultdict
 import contextlib
-import sys
 import os
 import datetime
 from concurrent import futures
 import time
-from absl import app, flags
-from ml_collections import config_flags
 from accelerate import Accelerator
 from accelerate.utils import set_seed, ProjectConfiguration
 from accelerate.logging import get_logger
@@ -22,15 +19,13 @@ from ddpo.stat_tracking import PerPromptStatTracker
 from ddpo.diffusers_patch.pipeline_with_logprob import pipeline_with_logprob
 from ddpo.diffusers_patch.ddim_with_logprob import ddim_step_with_logprob
 import torch
+import torchvision
 import wandb
 import random
 from functools import partial
 import tqdm
 import tempfile
 from PIL import Image
-from transformers import AutoProcessor, AutoModel
-from PickScore.trainer.scripts.mystep_realtime import reward_model_setup, reward_train_step
-import torchvision
 
 from omegaconf import DictConfig, OmegaConf
 
@@ -79,7 +74,8 @@ class DDPOTrainer:
                 gradient_accumulation_steps=config.train_gradient_accumulation_steps*config.train_num_update)
             if self.accelerator.is_main_process:
                 self.accelerator.init_trackers(
-                    project_name="active-diffusion",
+                    # project_name="active-diffusion",
+                    project_name=config.project_name,
                     # config=config.to_dict(),
                     config=dict(config),
                     init_kwargs={"wandb": {"name": config.run_name}},
