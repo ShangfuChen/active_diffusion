@@ -18,10 +18,10 @@ class DDPOTrainConfig:
     # run_name: str = "ensemble10_voting_warmup1_random40_normalizedPS"
     run_name : str = "test_realhuman_reasoning"
 
-    save_dir: str = "/data/hayano"
+    save_dir: str = "/data/shangfu"
 
     # random seed for reproducibility.
-    seed: int = 42
+    seed: int = 0
     # top-level logging directory for checkpoint saving.
     logdir: str = "logs"
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
@@ -69,13 +69,13 @@ class DDPOTrainConfig:
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
     sample_num_batches_per_epoch: int = 16
-    # sample_num_batches_per_epoch: int = 8
+    # sample_num_batches_per_epoch: int = 4
     # sample_num_batches_per_epoch: int = 32
     
     ###### Training ######
     # config.train = train = ml_collections.ConfigDict()
     # batch size (per GPU!) to use for training.
-    train_batch_size: int = 1
+    train_batch_size: int = 2
     # whether to use the 8bit Adam optimizer from bitsandbytes.
     train_use_8bit_adam: bool = False
     # learning rate.
@@ -90,7 +90,7 @@ class DDPOTrainConfig:
     train_adam_epsilon: float = 1e-8
     # number of gradient accumulation steps. the effective batch size is `batch_size * num_gpus *
     # gradient_accumulation_steps`
-    train_gradient_accumulation_steps: int = 8
+    train_gradient_accumulation_steps: int = 4
     # maximum gradient norm for gradient clipping.
     train_max_grad_norm: float = 1.0
     # number of inner epochs per outer epoch. each inner epoch is one iteration through the data collected during one
@@ -106,7 +106,7 @@ class DDPOTrainConfig:
     # the fraction of timesteps to train on. if set to less than 1.0, the model will be trained on a subset of the
     # timesteps for each sample. this will speed up training but reduce the accuracy of policy gradient estimates.
     train_timestep_fraction: float = 1.0
-    train_num_update: int = 5
+    train_num_update: int = 1
     normalization: bool = True
     ###### Prompt Function ######
     # prompt function to use. see `prompts.py` for available prompt functions.

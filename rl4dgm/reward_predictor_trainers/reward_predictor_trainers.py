@@ -8,7 +8,7 @@ import torch
 from torch import nn
 from torch.utils.data import DataLoader
 
-from torchensemble import VotingRegressor
+# from torchensemble import VotingRegressor
 
 from accelerate import Accelerator
 
@@ -812,7 +812,7 @@ class ErrorPredictorEnsembleTrainerVoting:
         # create directory to save config and model checkpoints 
         # for i in range(config_dict["n_models"]):
         #     os.makedirs(os.path.join(save_dir, f"model{i}"), exist_ok=False)
-        os.makedirs(os.path.join(save_dir, f"model0"), exist_ok=False)
+        os.makedirs(os.path.join(save_dir, f"model0"), exist_ok=True)
         self.save_dir = save_dir
 
         # make sure input dimension is defined in the config

@@ -82,5 +82,5 @@ def PickScore(**kwargs):
             # score
             scores = model.module.logit_scale.exp() * (text_embs @ image_embs.T)[0]
     scores = scores.squeeze().cpu()
-    scores = (scores - 19.2)/5*9 + 1
+    # scores = (scores - 19.2)/5*9 + 1
     return scores.squeeze().cpu()

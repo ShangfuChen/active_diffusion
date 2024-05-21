@@ -36,7 +36,7 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/shangfu/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir, exist_ok=False)
     
@@ -250,7 +250,7 @@ def main(cfg: TrainerConfig) -> None:
         # get human rewards
         if query_indices.shape[0] > 0:
             human_rewards = feedback_interface.query_batch(
-                prompts=["an aesthetic cat"]*query_indices.shape[0],
+                prompts=["amusement street"]*query_indices.shape[0],
                 image_batch=samples[query_indices],
                 query_indices=np.arange(query_indices.shape[0]),
             )
@@ -367,7 +367,7 @@ def main(cfg: TrainerConfig) -> None:
             ############################################################
             # get ground truth human rewards
             gnd_truth_human_rewards = feedback_interface.query_batch(
-                prompts=["an aesthetic cat"]*ai_indices.shape[0],
+                prompts=["amusement street"]*ai_indices.shape[0],
                 image_batch=samples[ai_indices],
                 query_indices=np.arange(ai_indices.shape[0]),
             )

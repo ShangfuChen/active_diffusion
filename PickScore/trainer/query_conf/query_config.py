@@ -19,13 +19,12 @@ class QueryConfig:
     query_everything_fisrt_iter : bool = False
 
     # Only used in random query
-    # n_feedback_per_query : int = 5
-    n_feedback_per_query : int = 20
-    # n_feedback_per_query : int = 40
+    n_feedback_per_query : int = 16
+    # n_feedback_per_query : int = 10
 
     # Only used in active query methods where number of queries vary in each loop.
     # If not enough queries are chosen, choose queries randomly to meet this minimum requirement    
-    min_n_queries : int = 10
+    min_n_queries : int = 0
 
     # whether to only enforce min number of queries during warmup 
     only_enforce_min_queries_during_warmup : bool = False
