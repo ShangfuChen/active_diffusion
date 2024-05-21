@@ -14,9 +14,12 @@ class DDPOTrainConfig:
     project_name: str = "debug"
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
-    # run_name: str = "ensemble10_voting_warmup2_dynamicthresh0_05_normalizedpickscore"
-    # run_name: str = "ensemble10_voting_warmup1_random40_normalizedPS"
-    run_name : str = "debug"
+
+    # run_name: str = "query_everything_raw_reward"
+    # run_name: str = "debug"
+    # run_name: str = "query_everything_raw_reward_softmax"
+    run_name: str = "query_everything_similarity_to_all_pos"
+    # run_name: str = "query_everything_with_similarity"
 
     save_dir: str = "/data/hayano"
 
@@ -56,8 +59,8 @@ class DDPOTrainConfig:
     ###### Sampling ######
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    # sample_num_steps: int = 20
-    sample_num_steps: int = 4
+    sample_num_steps: int = 20
+    # sample_num_steps: int = 4
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
     sample_eta: float = 1.0
@@ -106,7 +109,7 @@ class DDPOTrainConfig:
     # the fraction of timesteps to train on. if set to less than 1.0, the model will be trained on a subset of the
     # timesteps for each sample. this will speed up training but reduce the accuracy of policy gradient estimates.
     train_timestep_fraction: float = 1.0
-    train_num_update: int = 1
+    train_num_update: int = 5
     normalization: bool = True
     ###### Prompt Function ######
     # prompt function to use. see `prompts.py` for available prompt functions.
