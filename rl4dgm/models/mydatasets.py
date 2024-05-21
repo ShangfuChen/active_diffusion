@@ -1,6 +1,7 @@
 
 import random
 import torch 
+import numpy as np
 from torch.utils.data import Dataset
 from torch.distributions import Normal
 
@@ -74,6 +75,51 @@ class TripletDatasetWithBestSample(Dataset):
             positive_feature = self.features[positive_index]
             negative_feature = self.features[negative_index]
         return anchor_feature, anchor_score, positive_feature, negative_feature
+
+class TripletDatasetWithPositiveNegativeBest(Dataset):
+    def __init__(
+        self,
+        features,
+        positive_indices,
+        negative_indices,
+        best_sample_feature,
+        device,
+        is_train=False,
+        sampling_method="default",
+    ):
+        self.features = features.float().to(device)
+        self.best_sample_feature = best_sample_feature.float().to(device)
+        self.is_train = is_train
+        self.positive_indices = positive_indices
+        self.negative_indices = negative_indices
+
+        self.sampling_method = sampling_method
+        sampling_methods = [
+            "default",
+        ]
+        assert sampling_method in sampling_methods, f"Sampling method must be one of {sampling_methods}. Got {sampling_method}"
+
+    def __len__(self):
+        return self.features.shape[0]
+
+    def __getitem__(self, idx):
+
+        # print("getitem ", idx)
+        # given index, return anchor, positive, and negative samples
+        
+        # get anchor sample
+        anchor_feature = self.best_sample_feature.squeeze()
+
+        ##############################################################################################
+        # Sample positive (and negative) samples randomly from top 10% most (least) similar samples
+        ##############################################################################################
+        
+        if self.sampling_method == "default":
+            positive_index = random.choice(self.positive_indices)
+            negative_index = random.choice(self.negative_indices)
+            positive_feature = self.features[positive_index]
+            negative_feature = self.features[negative_index]
+        return anchor_feature, 0, positive_feature, negative_feature # 0 is dummy and not used
 
 
 class TripletDataset(Dataset):
@@ -203,10 +249,10 @@ class DoubleTripletDataset(Dataset):
             score_diff = self.scores_self[self.indices] - anchor_score
             most_to_least_similar_indices = torch.argsort(torch.abs(score_diff))
             
-            positive_index = random.choice(most_to_least_similar_indices[1:int(0.3*self.features.shape[0])])
+            positive_index = random.choice(most_to_least_similar_indices[1:int(0.1*self.features.shape[0])])
             positive_feature_self = self.features[positive_index]
 
-            negative_index = random.choice(most_to_least_similar_indices[int(0.7*self.features.shape[0]):])
+            negative_index = random.choice(most_to_least_similar_indices[int(0.9*self.features.shape[0]):])
             negative_feature_self = self.features[negative_index]
 
         ##############################################################################################
@@ -321,6 +367,7 @@ class HumanRewardDatasetNoImage(Dataset):
     
 
 class HumanDataset():
+
     """
     Note : This class is used to accumulate human data while training the encoder-predictor pipelins
         It is NOT a torch dataset. 
@@ -400,3 +447,172 @@ class HumanDataset():
     @property
     def ai_rewards(self,):
         return self._ai_rewards
+    
+# class HumanDatasetSimilarity():
+
+#     """
+#     Note : This class is used to accumulate human data while training the similarity-based pipeline
+#         It is NOT a torch dataset. 
+#     """
+#     def __init__(
+#         self, 
+#         device
+#     ):
+#         self.clear_data()
+#         self.device = device
+#         self._positive_samples = None
+#         self._negative_samples = None
+        
+#     def clear_data(self,):
+#         print("clear data called")
+#         self._sd_features = None
+#         self._n_data = 0
+#         self._positive_samples = None
+#         self._negative_samples = None
+
+#     def add_data(self, sd_features, positive_samples, negative_samples):
+#         """
+#         Add sd_features, human rewards, and ai rewards to the human dataset
+#         """
+#         # cast inputs to tensors, correct dimension, and put on correct device
+#         assert isinstance(sd_features, torch.Tensor), f"sd_features must be a torch.Tensor"
+#         sd_features = sd_features.to(self.device)
+#         sd_features = self._make_2d(sd_features)
+
+#         if not isinstance(positive_samples, torch.Tensor):
+#             positive_samples = torch.Tensor(positive_samples)
+
+#         if not isinstance(negative_samples, torch.Tensor):
+#             negative_samples = torch.Tensor(negative_samples)
+
+#         # if this is the first set of data added, initialize
+#         if self._sd_features is None:
+#             self._sd_features = sd_features
+#             self._positive_sampels = positive_samples
+#             self._negative_samples = negative_samples
+        
+#         # otherwise concatenate new data
+#         else:
+#             self._sd_features = torch.cat([self._sd_features, sd_features], dim=0)
+#             self._positive_sampels = torch.cat([self._positive_sampels, positive_samples])
+#             self._negative_samples = torch.cat([self._negative_samples, negative_samples])
+
+#         # update number of data
+#         self._n_data += sd_features.shape[0]
+
+#     def _make_2d(self, input_tensor):
+#         """
+#         If the input is 1d, add a dimension to make it 2d
+#         """
+#         if input_tensor.dim() == 1:
+#             return input_tensor[None,:]
+#         elif input_tensor.dim() == 2:
+#             return input_tensor
+#         else:
+#             raise Exception("input tensor dimension is incorrect")
+    
+#     @property
+#     def positive_features(self):
+#         return self._positive_samples
+    
+#     @property
+#     def negative_features(self):
+#         return self._negative_samples
+
+#     @property
+#     def n_data(self,):
+#         return self._n_data
+
+#     @property
+#     def sd_features(self,):
+#         return self._sd_features
+    
+#     @property
+#     def is_positive(self):
+#         return self._is_positive
+
+class HumanDatasetSimilarity():
+
+    """
+    Note : This class is used to accumulate human data while training the similarity-based pipeline
+        It is NOT a torch dataset. 
+    """
+    def __init__(
+        self, 
+        device
+    ):
+        self.clear_data()
+        self.device = device
+        
+    def clear_data(self,):
+        print("clear data called")
+        self._sd_features = None
+        self._n_data = 0
+        self._positive_indices = None
+        self._negative_indices = None
+
+    def add_data(self, sd_features, positive_indices, negative_indices):
+        """
+        Add sd_features, human rewards, and ai rewards to the human dataset
+        """
+        # cast inputs to tensors, correct dimension, and put on correct device
+        assert isinstance(sd_features, torch.Tensor), f"sd_features must be a torch.Tensor"
+        sd_features = sd_features.to(self.device)
+        sd_features = self._make_2d(sd_features)
+
+        if not isinstance(positive_indices, np.ndarray):
+            positive_indices = np.array(positive_indices)
+
+        # if this is the first set of data added, initialize
+        if self._sd_features is None:
+            self._sd_features = sd_features
+            self._positive_indices = positive_indices
+            self._negative_indices = negative_indices
+        
+        # otherwise concatenate new data
+        else:
+            self._positive_indices = np.concatenate([self._positive_indices, positive_indices + self._sd_features.shape[0]])
+            self._negative_indices = np.concatenate([self._negative_indices, negative_indices + self._sd_features.shape[0]])
+            self._sd_features = torch.cat([self._sd_features, sd_features], dim=0)
+
+        # update number of data
+        self._n_data += sd_features.shape[0]
+
+    def _make_2d(self, input_tensor):
+        """
+        If the input is 1d, add a dimension to make it 2d
+        """
+        if input_tensor.dim() == 1:
+            return input_tensor[None,:]
+        elif input_tensor.dim() == 2:
+            return input_tensor
+        else:
+            raise Exception("input tensor dimension is incorrect")
+    
+    @property
+    def positive_features(self):
+        return self._sd_features[self._positive_indices]
+    
+    @property
+    def negative_features(self):
+        return self._sd_features[self._negative_indices]
+
+    @property
+    def n_data(self,):
+        return self._n_data
+
+    @property
+    def sd_features(self,):
+        return self._sd_features
+    
+    @property
+    def positive_indices(self):
+        return self._positive_indices
+    
+    @property
+    def negative_indices(self):
+        return self._negative_indices
+
+
+ 
+ 
