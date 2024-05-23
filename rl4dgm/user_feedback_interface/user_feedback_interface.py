@@ -16,9 +16,9 @@ import torch
 from torchvision.transforms.functional import to_pil_image
 from transformers import AutoProcessor, AutoModel
 
-NUMBERING_FONT_SIZE = 64
+NUMBERING_FONT_SIZE = 16
 NUMBERING_FONT = ImageFont.truetype("FreeMono.ttf", NUMBERING_FONT_SIZE)
-PROMPT_FONT_SIZE = 32
+PROMPT_FONT_SIZE = 16
 PROMPT_FONT = ImageFont.truetype("FreeMono.ttf", PROMPT_FONT_SIZE)
 
 class FeedbackTypes(IntEnum):
@@ -65,7 +65,7 @@ class FeedbackInterface:
     def __init__(
         self,
         feedback_type="positive-indices",
-        query_image_size=(1024,1024),
+        query_image_size=(2048,1024),
         **kwargs,
     ):
         """
@@ -222,6 +222,7 @@ class FeedbackInterface:
         elif feedback_type == FeedbackTypes.POSITIVE_INDICES:
             feedback_args["output_type"] = OutputTypes.POSITIVE_INDICES
             feedback_args["valid_options"] = None
+            feedback_args["min_n_inputs"] = 1 # TODO - magic number. specify through hydra config?
 
         return feedback_args
 
@@ -268,7 +269,7 @@ class FeedbackInterface:
             assert len(prompt) > 0, "Prompt cannot be an empty string."
         return prompts
 
-    def _save_query_image(self, images, prompt, img_save_path): # TODO
+    def _save_query_image(self, images, prompt, img_save_path, custom_image_size=None): # TODO
         """
         Given images, prompt, and path to save image, organize it in a grid and number them.
         Save the image to specified path.
@@ -278,7 +279,8 @@ class FeedbackInterface:
             prompt (str) : text corresponding to query
             img_save_path (str) : file path to save the query image to (with .png extension)
         """
-        
+        query_image_size = custom_image_size if custom_image_size is not None else self.query_image_size
+
         if not isinstance(images, list):
             images = [images]
 
@@ -295,49 +297,57 @@ class FeedbackInterface:
         images = [img if img is not None else dummy_image for img in images]
 
         # get number of rows and columns
-        row_margin = 64 # spacing between each row
+        row_margin = 32 # spacing between each row
+        col_margin = 10
         n_images = len(images)
-        max_n_cols = math.ceil(n_images**0.5)
-        n_cols = int(min(n_images, max_n_cols))
 
-        if n_images % n_cols == 0:
-          n_rows = int(n_images / n_cols)
-        else:
-          n_rows = int((n_images // n_cols) + 1)
+        # get number of rows and columns that maximize the size of each image
+        max_size = 0
+        n_rows = 0
+        n_cols = 0
+        for r in range(1, n_images + 1):
+            c = math.ceil(n_images / r)
+            if c * r >= n_images: # confirm all images can be fit
+                size = min(query_image_size[0] / c, query_image_size[1] / r)
+                if size > max_size:
+                    max_size = size
+                    n_rows = r
+                    n_cols = c
 
         # scale images
-        img_size = images[0].size[0]
         scaled_size = int(min(
-          (self.query_image_size[1] - (n_rows + 1) * row_margin) / n_rows, 
-          self.query_image_size[0] / n_cols)
-        )
+            (query_image_size[1] - (n_rows + 1) * row_margin) / n_rows, 
+            (query_image_size[0] - (n_cols + 1) * col_margin) / n_cols
+        ))
+
         for i in range(len(images)):
-          images[i] = images[i].resize((scaled_size, scaled_size))
+            images[i] = images[i].resize((scaled_size, scaled_size))
 
         # generate image locations (pix position of top left corner of images)
-        x_start = int( (self.query_image_size[0] - n_cols * scaled_size) / 2 )
+        x_start = int( (query_image_size[0] - n_cols * scaled_size) / 2 )
         x_coords, y_coords = [], []
         for i in range(n_cols):
-          x_coords.append( int(x_start + i * scaled_size) )
+            x_coords.append( int((i + 1) * col_margin + i * scaled_size) )
+            # x_coords.append( int(x_start + i * scaled_size) )
         for i in range(n_rows):
-          y_coords.append( int((i + 1) * row_margin + i * scaled_size) )
+            y_coords.append( int((i + 1) * row_margin + i * scaled_size) )
 
         # organize images in a grid
-        query_image = Image.new(mode="RGB", size=self.query_image_size, color=(255,255,255))
+        query_image = Image.new(mode="RGB", size=query_image_size, color=(255,255,255))
         coords = []
         for y in range(n_rows):
-          for x in range(n_cols):
-            coords.append((x_coords[x], y_coords[y]))
+            for x in range(n_cols):
+                coords.append((x_coords[x], y_coords[y]))
         
         draw = ImageDraw.Draw(query_image)
        
         for i, img in enumerate(images):
-          query_image.paste(img, coords[i])
-          text_pos = (
-            coords[i][0] + scaled_size/2 - NUMBERING_FONT_SIZE/2, 
-            coords[i][1] + scaled_size + row_margin/2 - NUMBERING_FONT_SIZE/2
-          )
-          draw.text(text_pos, f"{i+1}", fill=(0,0,0), font=NUMBERING_FONT)
+            query_image.paste(img, coords[i])
+            text_pos = (
+                coords[i][0] + scaled_size/2 - NUMBERING_FONT_SIZE/2, 
+                coords[i][1] + scaled_size + row_margin/2 - NUMBERING_FONT_SIZE/2
+            )
+            draw.text(text_pos, f"{i+1}", fill=(0,0,0), font=NUMBERING_FONT)
         
         # add prompt
         draw.text((20, 10), text=prompt, fill=(0,0,0), font=PROMPT_FONT)
@@ -508,7 +518,7 @@ class HumanFeedbackInterface(FeedbackInterface):
     def __init__(
         self,
         feedback_type="pick-one",
-        query_image_size=(1024,1024),
+        query_image_size=(2048,512),
         **kwargs,
     ):
         """
@@ -618,6 +628,12 @@ class HumanFeedbackInterface(FeedbackInterface):
                 print("Got non-integer input(s). Input must be a speace separated list of ints")
                 continue
 
+            n_chosen = len(input_ints)
+            n_not_chosen = len(valid_options) - len(input_ints)
+            if n_chosen < self.feedback_args["min_n_inputs"] or n_not_chosen < self.feedback_args["min_n_inputs"]:
+                print(f"Number of chosen and unchosen indices must both be at least {self.feedback_args['min_n_inputs']}. Got chosen ({n_chosen}), not chosen ({n_not_chosen})")
+                continue
+          
             # make sure all provided indices are in the lit of valid options
             if set(input_ints).issubset(valid_options):
                 return np.array(input_ints)
@@ -659,7 +675,7 @@ class HumanFeedbackInterface(FeedbackInterface):
         )
         # if this is the first query, have evaluator choose the first best image
         if self.is_first_batch:
-            print("Select the best image in best_image_candidates.png")
+            print("Select the best image in query_image.png")
             best_image_index = self._get_raw_feedback(valid_options=np.arange(1, len(pil_images)+1)) - 1
             self.best_image = pil_images[best_image_index]
      
@@ -668,6 +684,7 @@ class HumanFeedbackInterface(FeedbackInterface):
                 images=self.best_image,
                 prompt="Best image so far",
                 img_save_path="real_human_ui_images/best_image.png",
+                custom_image_size=(512,512),
             )
 
         # get feedback
@@ -684,6 +701,7 @@ class HumanFeedbackInterface(FeedbackInterface):
                 images=best_image_candidates,
                 prompt="Choose the best image",
                 img_save_path="real_human_ui_images/best_image_candidates.png",
+                custom_image_size=(1024,1024),
             )
             best_image_index = self._get_raw_feedback(valid_options=np.arange(1, len(best_image_candidates)+1)) - 1
             # update best image if anything other than the current best is chosen
@@ -695,6 +713,7 @@ class HumanFeedbackInterface(FeedbackInterface):
                     images=self.best_image,
                     prompt="Best image so far",
                     img_save_path="real_human_ui_images/best_image.png",
+                    custom_image_size=(512,512),
                 )
             else:
                 # if best image is not updated, don't return index
