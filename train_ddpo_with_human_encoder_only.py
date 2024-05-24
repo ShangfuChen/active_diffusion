@@ -137,7 +137,9 @@ def main(cfg: TrainerConfig) -> None:
     #########################################################
     n_total_human_feedback = 0
     best_sample_latent = None
+    best_noise_latent = None
     best_reward = 0
+    clean_data = False
 
     n_ddpo_train_calls = 0 # number of times ddpo training loop was called
     loop = 0 # number of times the main training loop has run
@@ -151,9 +153,11 @@ def main(cfg: TrainerConfig) -> None:
             epoch=loop,
             save_images=True,
             img_save_dir=img_save_dir,
-            high_reward_latents=None)
+            high_reward_latents=best_noise_latent)
+            # high_reward_latents=None)
 
         sd_features = torch.flatten(all_latents[:,-1,:,:,:], start_dim=1).float()
+        sd_noises = all_latents[:, 0,:,:,:].float()
         print("Sampled from SD model and flattened featuers to ", sd_features.shape)
 
         # ############################################################
@@ -198,6 +202,7 @@ def main(cfg: TrainerConfig) -> None:
             best_image = samples[best_index].cpu().numpy().transpose(1, 2, 0) * 255
             best_image = PIL.Image.fromarray(best_image.astype('uint8'), mode='RGB')
             best_sample_latent = sd_features[best_index].unsqueeze(0)
+            best_noise_latent = sd_noises[best_index].unsqueeze(0)
             best_reward = max_reward_in_batch
             best_image.save("best_image.png")
         # print("Got human rewards for query indices", query_indices)
@@ -231,9 +236,9 @@ def main(cfg: TrainerConfig) -> None:
             )
             human_encoder_trainer.initialize_dataloaders(trainset=human_encoder_trainset)
             human_encoder_trainer.train_model()
-
+            clean_data = True
             # clear the human_dataset
-            human_dataset.clear_data()
+            # human_dataset.clear_data()
 
         ############################ If we have enough human data to train on ############################
 
@@ -242,16 +247,32 @@ def main(cfg: TrainerConfig) -> None:
         ############################################################
         # get human encodings for samples in this batch
         with torch.no_grad():
+            scores = human_dataset.human_rewards
+            positive_indices = torch.nonzero(scores > scores.mean()).squeeze()
+            positive_feature = human_dataset.sd_features[positive_indices]
+            positive_sample_encodings = human_encoder_trainer.model(positive_feature)
+
             human_encodings = human_encoder_trainer.model(sd_features)
             best_sample_encoding = human_encoder_trainer.model(best_sample_latent)
         print("\nComputing final rewards")
-        ### Similarity with the best sample ### (for similarity-based reward)
+
+        ### Similarity to all positive samples ###
+        # expand_dim = (positive_sample_encodings.shape[0], human_encodings.shape[0], human_encodings.shape[1])
+        # positive_sample_encodings = positive_sample_encodings.unsqueeze(1).expand(expand_dim)
+        # human_encodings = human_encodings.unsqueeze(0).expand(expand_dim)
+        # final_rewards = torch.nn.functional.cosine_similarity(human_encodings, positive_sample_encodings, dim=2).mean(0)
+        
+        if clean_data:
+            human_dataset.clear_data()
+            clean_data = False
+        ### Similarity to the best sample ### (for similarity-based reward)
         final_rewards = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
         final_rewards = (final_rewards+1)/2
-        final_rewards = torch.softmax(final_rewards, dim=0)
+        # final_rewards = torch.softmax(final_rewards, dim=0)
 
         ### Ground truth human reward ### (for query everything)
-        # final_rewards = human_rewards
+        # final_rewards = human_rewards - 19.2
+        # final_rewards = torch.softmax(final_rewards, dim=0)
 
         ai_indices = np.setdiff1d(np.arange(sd_features.shape[0]), np.array(query_indices)) # feature indices where AI reward is used
 
