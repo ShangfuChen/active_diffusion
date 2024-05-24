@@ -672,6 +672,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             images=pil_images,
             prompt="Choose the best image",
             img_save_path="real_human_ui_images/query_image.png",
+            custom_image_size=(4096,2048),
         )
         # if this is the first query, have evaluator choose the first best image
         if self.is_first_batch:

@@ -140,6 +140,7 @@ def main(cfg: TrainerConfig) -> None:
     best_sample_encoding_from_prev_encoder = None
     best_to_prev_best_cossim = None
     best_to_best_cossim_cur_and_prev_encoder = None
+    predicted_cossim = None
 
     n_ddpo_train_calls = 0 # number of times ddpo training loop was called
     loop = 0 # number of times the main training loop has run
@@ -158,9 +159,18 @@ def main(cfg: TrainerConfig) -> None:
         sd_features = torch.flatten(all_latents[:,-1,:,:,:], start_dim=1).float()
         print("Sampled from SD model and flattened featuers to ", sd_features.shape)
 
-        # ############################################################
-        # # Active query --> get human rewards
-        # ############################################################
+        ############################################################
+        # Compute cosine similarity before training
+        ############################################################
+        if best_sample_latent is not None:
+            with torch.no_grad():
+                human_encodings = human_encoder_trainer.model(sd_features)
+                best_sample_encoding = human_encoder_trainer.model(best_sample_latent)
+                predicted_cossim = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
+
+        ############################################################
+        # Active query --> get human rewards
+        ############################################################
         print("Begin active query")
         if loop == 0 and cfg.query_conf.query_everything_fisrt_iter:
             # if first iteration, query everything
@@ -298,32 +308,24 @@ def main(cfg: TrainerConfig) -> None:
         # increment loop
         loop += 1
 
-        # # log
-        # if query_indices.shape[0] > 0:
-        #     if ai_indices.shape[0] > 0:
-        #         # both human and ai were queried
-        #         mean_human_reward = torch.cat((human_rewards, gnd_truth_human_rewards)).mean()
-        #     else:
-        #         # only human was queried
-        #         mean_human_reward = human_rewards.mean()
-        # else:
-        #     # only ai was queried
-        #     mean_human_reward = gnd_truth_human_rewards.mean()
-
-        # get cossim values for positive samples queried to human
         try:
             positive_to_best_cossim = final_rewards[query_indices[positive_indices]]
             negative_to_best_cossim = final_rewards[query_indices[negative_indices]]
             best_to_prev_best_cossim = best_to_prev_best_cossim if is_best_image_updated else None
             best_to_best_cossim_cur_and_prev_encoder if not is_best_image_updated else None
+            eval_positive_to_best_cossim = predicted_cossim[query_indices[positive_indices]].mean().item() if predicted_cossim is not None else None
+            eval_negative_to_best_cossim = predicted_cossim[query_indices[negative_indices]].mean().item() if predicted_cossim is not None else None
+
             accelerator.log({
                 "human_feedback_total" : n_total_human_feedback,
                 "n_human_encoder_training" : human_encoder_trainer.n_calls_to_train,
                 "n_ddpo_training" : n_ddpo_train_calls,
                 "n_positive_samples" : positive_indices.shape[0],
                 "n_negative_samples" : negative_indices.shape[0],
-                "positive_to_best_avg_cossim" : positive_to_best_cossim.mean(), # avg cossim between all positive images chosen by human this loop and the current best image
-                "negative_to_best_avg_cossim" : negative_to_best_cossim.mean(), # avg cossim between all negative images chosen by human this loop and the current best image
+                "train_positive_to_best_avg_cossim" : positive_to_best_cossim.mean(), # avg cossim between all positive images chosen by human this loop and the current best image
+                "train_negative_to_best_avg_cossim" : negative_to_best_cossim.mean(), # avg cossim between all negative images chosen by human this loop and the current best image
+                "eval_positive_to_best_avg_cossim" : eval_positive_to_best_cossim, # 
+                "eval_negative_to_best_avg_cossim" : eval_negative_to_best_cossim, # 
                 "is_best_image_updated" : int(is_best_image_updated), # whether the best image got updated this batch (1=yes, 0=no)
                 "best_to_prev_best_avg_cossim" : best_to_prev_best_cossim, # cossim between new best image and previous best image using the most recent encoder (only logged if best image is updated this loop)
                 "best_to_best_cossim" : best_to_best_cossim_cur_and_prev_encoder, # cossim between best image encoding by encoder this iteration and encoding by encoder in the previous iteration of the loop (only logged if best image is NOT updated this loop)
