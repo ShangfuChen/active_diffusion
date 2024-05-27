@@ -141,6 +141,7 @@ def main(cfg: TrainerConfig) -> None:
     best_to_prev_best_cossim = None
     best_to_best_cossim_cur_and_prev_encoder = None
     predicted_cossim = None
+    best_noise_latent = None
 
     n_ddpo_train_calls = 0 # number of times ddpo training loop was called
     loop = 0 # number of times the main training loop has run
@@ -149,14 +150,25 @@ def main(cfg: TrainerConfig) -> None:
         ############################################################
         # Sample from SD model
         ############################################################
-        samples, all_latents, _, _ = ddpo_trainer.sample(
-            logger=logger,
-            epoch=loop,
-            save_images=True,
-            img_save_dir=img_save_dir,
-            high_reward_latents=None)
+        if cfg.ddpo_conf.sample_from_best_latent:    
+            samples, all_latents, _, _ = ddpo_trainer.sample(
+                logger=logger,
+                epoch=loop,
+                save_images=True,
+                img_save_dir=img_save_dir,
+                high_reward_latents=best_noise_latent,
+            )
+        else:
+            samples, all_latents, _, _ = ddpo_trainer.sample(
+                logger=logger,
+                epoch=loop,
+                save_images=True,
+                img_save_dir=img_save_dir,
+                high_reward_latents=None,
+            )
 
         sd_features = torch.flatten(all_latents[:,-1,:,:,:], start_dim=1).float()
+        sd_noises = all_latents[:, 0,:,:,:].float()
         print("Sampled from SD model and flattened featuers to ", sd_features.shape)
 
         ############################################################
@@ -207,7 +219,10 @@ def main(cfg: TrainerConfig) -> None:
             is_best_image_updated = True
             # if best sample was updated, update best_sample_latent
             best_sample_latent_prev = best_sample_latent
-            best_sample_latent = sd_features[new_best_sample_index]
+            # best_sample_latent = sd_features[new_best_sample_index]
+            # best_noise_latent = sd_noises[new_best_sample_index].unsqueeze(0)
+            best_sample_latent = sd_features[query_indices[new_best_sample_index]]
+            best_noise_latent = sd_noises[query_indices[new_best_sample_index]].unsqueeze(0)
         else:
             is_best_image_updated = False
 
@@ -266,10 +281,20 @@ def main(cfg: TrainerConfig) -> None:
                 best_to_prev_best_cossim = (best_to_prev_best_cossim + 1) / 2
                 
         print("\nComputing final rewards")
-        ### Similarity with the best sample ### (for similarity-based reward)
-        final_rewards = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
-        final_rewards = (final_rewards+1)/2
-        # final_rewards = torch.softmax(final_rewards, dim=0)
+
+        if cfg.ddpo_conf.reward_mode == "similarity-to-best-sample":
+            ### Similarity with the best sample ### (for similarity-based reward)
+            final_rewards = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
+            final_rewards = (final_rewards+1)/2
+            # final_rewards = torch.softmax(final_rewards, dim=0)
+        elif cfg.ddpo_conf.reward_mode == "similarity-to-all-positive":
+            ### Similarity to all positive samples ###
+            positive_sample_encodings = human_encodings[query_indices[positive_indices]]
+            expand_dim = (positive_sample_encodings.shape[0], human_encodings.shape[0], human_encodings.shape[1])
+            positive_sample_encodings = positive_sample_encodings.unsqueeze(1).expand(expand_dim)
+            human_encodings = human_encodings.unsqueeze(0).expand(expand_dim)
+            final_rewards = torch.nn.functional.cosine_similarity(human_encodings, positive_sample_encodings, dim=2).mean(0)
+
 
         ### Ground truth human reward ### (for query everything)
         # final_rewards = human_rewards
@@ -289,7 +314,7 @@ def main(cfg: TrainerConfig) -> None:
             )
             gnd_truth_human_rewards = torch.Tensor(gnd_truth_human_rewards)
 
-        print("Got final rewards", final_rewards)
+        # print("Got final rewards", final_rewards)
         
         ############################################################
         # Train SD via DDPO
