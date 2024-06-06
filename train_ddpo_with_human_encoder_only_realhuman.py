@@ -150,7 +150,8 @@ def main(cfg: TrainerConfig) -> None:
         ############################################################
         # Sample from SD model
         ############################################################
-        if cfg.ddpo_conf.sample_from_best_latent:    
+        if cfg.ddpo_conf.sample_from_best_latent:
+            print("sampling from best image latent")
             samples, all_latents, _, _ = ddpo_trainer.sample(
                 logger=logger,
                 epoch=loop,
@@ -159,6 +160,7 @@ def main(cfg: TrainerConfig) -> None:
                 high_reward_latents=best_noise_latent,
             )
         else:
+            print("sampling from random latent")
             samples, all_latents, _, _ = ddpo_trainer.sample(
                 logger=logger,
                 epoch=loop,
@@ -359,6 +361,16 @@ def main(cfg: TrainerConfig) -> None:
             print(error)
             print("Something went wrong with logging")
             breakpoint()
+
+        # ask user whether to save encoder model
+        print("finished loop", loop)
+        input_str = ""
+        while not input_str in ["y", "n"]:
+            input_str = input("Save encoder checkpoint? [y/n]")
+            if input_str == "y":
+                human_encoder_trainer.save_model_ckpt()
+            elif input_str == "n":
+                break
 
 if __name__ == "__main__":
     # app.run(main)

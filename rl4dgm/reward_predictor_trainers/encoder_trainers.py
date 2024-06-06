@@ -12,6 +12,10 @@ from accelerate import Accelerator
 from rl4dgm.models.mydatasets import TripletDataset, DoubleTripletDataset
 from rl4dgm.models.my_models import LinearModel
 
+def cosine_similairity_distance(x1, x2):
+    cossim = (nn.functional.cosine_similarity(x1, x2, dim=0) + 1) / 2
+    return 1 - cossim
+
 class TripletEncoderTrainer:
     """
     Class for keeping track of image encoder trained on triplet loss
@@ -37,7 +41,7 @@ class TripletEncoderTrainer:
             "shuffle" : True,
             "lr" : 1e-6,
             "n_epochs" : 50,
-            "triplet_margin" : 1.0,
+            "triplet_margin" : 0.25,
             "save_every" : 50,
             "input_dim" : 32768,
             "n_hidden_layers" : 5,
@@ -91,7 +95,11 @@ class TripletEncoderTrainer:
         
         # Initialize optimizer and loss criteria
         self.optimizer = torch.optim.Adam(self.model.parameters(), lr=self.config["lr"])
-        self.criterion = nn.TripletMarginLoss(p=2, margin=self.config["triplet_margin"])
+        # self.criterion = nn.TripletMarginLoss(p=2, margin=self.config["triplet_margin"])
+        self.criterion = nn.TripletMarginWithDistanceLoss(
+            distance_function=cosine_similairity_distance,
+            margin=self.config["triplet_margin"],
+        )
 
         self.n_total_epochs = 0
         self.n_total_steps = 0
@@ -163,9 +171,10 @@ class TripletEncoderTrainer:
             
             # save checkpoint
             if (self.n_total_epochs > 0) and (self.n_total_epochs % self.config["save_every"]) == 0:
-                model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
-                torch.save(self.model.state_dict(), model_save_path)
-                print("TripletEncoder model checkpoint saved to", model_save_path)
+                self.save_model_ckpt()
+                # model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
+                # torch.save(self.model.state_dict(), model_save_path)
+                # print("TripletEncoder model checkpoint saved to", model_save_path)
 
     def eval_model(self):
         with torch.no_grad():
@@ -189,7 +198,11 @@ class TripletEncoderTrainer:
                     f"{self.name}_{dataset_type}_dist_diff" : (np.array(anchor_negative) - np.array(anchor_positive)).mean(),
                 })
 
-    
+    def save_model_ckpt(self):
+        model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
+        torch.save(self.model.state_dict(), model_save_path)
+        print("TripletEncoder model checkpoint saved to", model_save_path)
+
 class DoubleTripletEncoderTrainer:
     """
     Class for keeping track of image encoder trained on weighted triplet loss using reward values from two different agents
