@@ -346,8 +346,12 @@ class DDPOTrainer:
             # Add a small perturbation on the high reward latents
             if high_reward_latents is not None:
                 condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
-                noise = torch.Tensor([0.01]).to(self.accelerator.device)
-                alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)
+                noise = torch.arange(self.config.sample_batch_size)*1/self.config.sample_batch_size
+                alpha = torch.sqrt(1-noise*noise)
+                noise = torch.reshape(noise, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
+                alpha = torch.reshape(alpha, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
+                # noise = torch.Tensor([0.01]).to(self.accelerator.device)
+                # alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)   
                 condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
                 condition_latents = condition_latents.half()
             else:
