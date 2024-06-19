@@ -38,7 +38,7 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/shangfu/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir, exist_ok=False)
     
@@ -142,6 +142,7 @@ def main(cfg: TrainerConfig) -> None:
     best_to_best_cossim_cur_and_prev_encoder = None
     predicted_cossim = None
     best_noise_latent = None
+    positive_noise_latents = None
 
     n_ddpo_train_calls = 0 # number of times ddpo training loop was called
     loop = 0 # number of times the main training loop has run
@@ -157,7 +158,8 @@ def main(cfg: TrainerConfig) -> None:
                 epoch=loop,
                 save_images=True,
                 img_save_dir=img_save_dir,
-                high_reward_latents=best_noise_latent,
+                # high_reward_latents=best_noise_latent,
+                high_reward_latents=positive_noise_latents,
             )
         else:
             print("sampling from random latent")
@@ -221,11 +223,14 @@ def main(cfg: TrainerConfig) -> None:
             is_best_image_updated = True
             # if best sample was updated, update best_sample_latent
             best_sample_latent_prev = best_sample_latent
-            # best_sample_latent = sd_features[new_best_sample_index]
-            # best_noise_latent = sd_noises[new_best_sample_index].unsqueeze(0)
             best_sample_latent = sd_features[query_indices[new_best_sample_index]]
             best_noise_latent = sd_noises[query_indices[new_best_sample_index]].unsqueeze(0)
+            positive_noise_latents = sd_noises[query_indices[positive_indices]]
         else:
+            positive_noise_latents = torch.cat([
+                sd_noises[query_indices[positive_indices]],
+                best_noise_latent,
+            ], dim=0)
             is_best_image_updated = False
 
         # add to human dataset

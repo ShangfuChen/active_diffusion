@@ -180,8 +180,8 @@ class DDPOTrainer:
             if config.use_lora and isinstance(models[0], AttnProcsLayers):
                 # self.pipeline.unet.load_attn_procs(input_dir)
                 tmp_unet = UNet2DConditionModel.from_pretrained(
-                    config.pretrained.model,
-                    revision=config.pretrained.revision,
+                    config.pretrained_model,
+                    revision=config.pretrained_revision,
                     subfolder="unet",
                 )
                 tmp_unet.load_attn_procs(input_dir)
@@ -314,6 +314,7 @@ class DDPOTrainer:
         self.samples = []
         self.prompts = []
         all_rewards = []
+        positive_index = 0
         
         for i in self.tqdm(
             range(self.config.sample_num_batches_per_epoch),
@@ -345,14 +346,28 @@ class DDPOTrainer:
 
             # Add a small perturbation on the high reward latents
             if high_reward_latents is not None:
-                condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
-                noise = torch.arange(self.config.sample_batch_size)*1/self.config.sample_batch_size
-                alpha = torch.sqrt(1-noise*noise)
-                noise = torch.reshape(noise, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
-                alpha = torch.reshape(alpha, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
-                # noise = torch.Tensor([0.01]).to(self.accelerator.device)
+                condition_latents = []
+                ### sampled from multiple latents
+                # for i in range(self.config.sample_batch_size):
+                #     condition_latents.append(high_reward_latents[positive_index].unsqueeze(0))
+                #     positive_index += 1
+                #     if positive_index == high_reward_latents.shape[0]:
+                #         positive_index = 0
+                # condition_latents = torch.cat(condition_latents)
+                
+                ### scheduled noise ###
+                # condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
+                # noise = torch.arange(self.config.sample_batch_size)*1/self.config.sample_batch_size
+                # alpha = torch.sqrt(1-noise*noise)
+                # noise = torch.reshape(noise, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
+                # alpha = torch.reshape(alpha, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
+                
+                ### fixed noise ###
+                # condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
+                # noise = torch.Tensor([0]).to(self.accelerator.device)
                 # alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)   
-                condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
+                # condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
+                
                 condition_latents = condition_latents.half()
             else:
                 condition_latents = None
@@ -432,69 +447,6 @@ class DDPOTrainer:
         else:
             # if using trainable reward model (pickscore), rewards will be computed in the train loop after reward model has been updated
             return samples, self.prompts
-
-    """
-    Sample images and prompts with a given number of batch
-    """
-    # NOTE: Remove reward_model and processor args because reward calculation
-    # is move to train()
-    def sample_num_batch(self, num_batch):
-        self.pipeline.unet.eval()
-        samples = []
-        prompts_list = []
-        for i in self.tqdm(
-            range(num_batch),
-            desc=f"Sampling with specified number of batch", # TODO
-            disable=not self.accelerator.is_local_main_process,
-            position=0,
-        ):
-            # generate prompts
-            # original prompts function that sample a prompt at a time
-            prompts, prompt_metadata = zip(
-                *[
-                    self.prompt_fn()
-                    for _ in range(self.config.sample_batch_size)
-                ]
-            )
-            # for cute_animal only
-            # prompts = self.prompt_fn(self.config.sample_batch_size)
-
-            # encode prompts
-            prompt_ids = self.pipeline.tokenizer(
-                prompts,
-                return_tensors="pt",
-                padding="max_length",
-                truncation=True,
-                max_length=self.pipeline.tokenizer.model_max_length,
-            ).input_ids.to(self.accelerator.device)
-            prompt_embeds = self.pipeline.text_encoder(prompt_ids)[0]
-
-            # sample
-            with self.autocast():
-                images, _, latents, log_probs = pipeline_with_logprob(
-                    self.pipeline,
-                    prompt_embeds=prompt_embeds,
-                    negative_prompt_embeds=self.sample_neg_prompt_embeds,
-                    num_inference_steps=self.config.sample_num_steps,
-                    guidance_scale=self.config.sample_guidance_scale,
-                    eta=self.config.sample_eta,
-                    output_type="pt",
-                )
-
-            latents = torch.stack(
-                latents, dim=1
-            )  # (batch_size, num_steps + 1, 4, 64, 64)
-            log_probs = torch.stack(log_probs, dim=1)  # (batch_size, num_steps, 1)
-            timesteps = self.pipeline.scheduler.timesteps.repeat(
-                self.config.sample_batch_size, 1
-            )  # (batch_size, num_steps)
-            samples.append(
-                {"images": images,}
-            )
-            prompts_list.append(prompts)
-        # return tensor of images
-        samples = torch.cat([sample["images"] for sample in samples])
-        return samples, prompts_list
 
     def train(self, logger, epoch, reward_model, processor):
 
@@ -993,10 +945,8 @@ class DDPOTrainer:
             # make sure we did an optimization step at the end of the inner epoch
             assert self.accelerator.sync_gradients
         # TODO #
-        # Does not support model saving now
-        # if epoch != 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
-            # self.accelerator.save_state()
-
+        if self.config.save_freq > 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
+            self.accelerator.save_state()
         return epoch
 
 
@@ -1263,9 +1213,8 @@ class DDPOTrainer:
             assert self.accelerator.sync_gradients
         # TODO #
         # Does not support model saving now
-        # if epoch != 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
-            # self.accelerator.save_state()
-
+        if self.config.save_freq > 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
+            self.accelerator.save_state()
         return epoch
 
 
