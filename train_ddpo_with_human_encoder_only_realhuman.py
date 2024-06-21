@@ -38,7 +38,7 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/shangfu/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir, exist_ok=False)
     
@@ -148,18 +148,27 @@ def main(cfg: TrainerConfig) -> None:
     loop = 0 # number of times the main training loop has run
     
     while n_ddpo_train_calls < cfg.ddpo_conf.n_outer_loops:
+
         ############################################################
         # Sample from SD model
         ############################################################
-        if cfg.ddpo_conf.sample_from_best_latent:
+        if cfg.ddpo_conf.sample_from_all_good_latents:
+            print("sampling from best and good image latent")
+            samples, all_latents, _, _ = ddpo_trainer.sample(
+                logger=logger,
+                epoch=loop,
+                save_images=True,
+                img_save_dir=img_save_dir,
+                high_reward_latents=positive_noise_latents,
+            )
+        elif cfg.ddpo_conf.sample_from_best_latent:
             print("sampling from best image latent")
             samples, all_latents, _, _ = ddpo_trainer.sample(
                 logger=logger,
                 epoch=loop,
                 save_images=True,
                 img_save_dir=img_save_dir,
-                # high_reward_latents=best_noise_latent,
-                high_reward_latents=positive_noise_latents,
+                high_reward_latents=best_noise_latent,
             )
         else:
             print("sampling from random latent")
@@ -367,15 +376,15 @@ def main(cfg: TrainerConfig) -> None:
             print("Something went wrong with logging")
             breakpoint()
 
-        # ask user whether to save encoder model
-        print("finished loop", loop)
-        input_str = ""
-        while not input_str in ["y", "n"]:
-            input_str = input("Save encoder checkpoint? [y/n]")
-            if input_str == "y":
-                human_encoder_trainer.save_model_ckpt()
-            elif input_str == "n":
-                break
+        # # ask user whether to save encoder model
+        # print("finished loop", loop)
+        # input_str = ""
+        # while not input_str in ["y", "n"]:
+        #     input_str = input("Save encoder checkpoint? [y/n]")
+        #     if input_str == "y":
+        #         human_encoder_trainer.save_model_ckpt()
+        #     elif input_str == "n":
+        #         break
 
 if __name__ == "__main__":
     # app.run(main)

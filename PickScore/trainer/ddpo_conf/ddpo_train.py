@@ -11,20 +11,37 @@ class DDPOTrainConfig:
     n_outer_loops: int = 60 # number of times ddpo train should be called
     save_dataset: bool = True
     dataset_save_path: str = "/home/hayano/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
-    project_name: str = "debug"
+    project_name: str = "active-diffusion"
+
+    reward_mode: str = "similarity-to-best-sample"
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
 
-    # run_name: str = "query_everything_raw_reward"
-    # run_name: str = "debug"
+    # run_name: str = "query_everything_raw_reward_handcraft_norm"
+    # run_name: str = "real_human_emotion_transfer"
     # run_name: str = "query_everything_raw_reward_softmax"
-    run_name: str = "query_everything_similarity_to_all_pos"
-    # run_name: str = "query_everything_with_similarity"
+    # run_name: str = "similarity_generate_from_best_64"
+    # run_name: str = "query_everything_with_similarity_64"
+    # run_name: str = "real_human_amusement_64_monochrome_preference"
+    # run_name: str = "debug"
+    run_name: str = "narcissus_reflection_best_0noise"
+    # run_name: str = "mountains_from_train_window"
+    # run_name: str = "one_blue_rose_in_vase"
+    # run_name: str = "real_human_remove_red_flowers_64"
 
     save_dir: str = "/data/hayano"
 
+    # sampling
+    # sample_latent_type: str = "best_with_fixed_noise"
+    # sample_latent_type: str = "best_scheduled"
+    sample_latent_type: str = "good_without_noise" # how to sample
+    sample_from_best_latent: bool = True # whether to sample from best latent
+    sample_from_all_good_latents: bool = True # if true, use best + good latents
+    latent_noise: float = 0.0
+
+
     # random seed for reproducibility.
-    seed: int = 0
+    seed: int = 1
     # top-level logging directory for checkpoint saving.
     logdir: str = "logs"
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
@@ -59,8 +76,8 @@ class DDPOTrainConfig:
     ###### Sampling ######
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    sample_num_steps: int = 20
-    # sample_num_steps: int = 4
+    sample_num_steps: int = 50
+    # sample_num_steps: int = 5
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
     sample_eta: float = 1.0
@@ -116,6 +133,7 @@ class DDPOTrainConfig:
     # prompt_fn: str = "simple_animals"
     # prompt_fn: str = "cute_cats"
     # prompt_fn: str = "ugly_cats"
+    # prompt_fn: str = "street"
     prompt_fn: str = "test_prompt"
     # prompt_fn: str = "cute_animals"
     # kwargs to pass to the prompt function.

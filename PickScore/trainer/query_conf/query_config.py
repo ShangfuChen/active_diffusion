@@ -8,7 +8,8 @@ class QueryConfig:
 
     # type of feedback to use (see FeedbackInterface class for available types)
     # feedback_type : str = "score-one-wrt-best"
-    feedback_type : str = "score-one"
+    # feedback_type : str = "score-one"
+    feedback_type : str = "positive-indices"
 
     # query method
     # query_type : str = "perplexity"
@@ -19,7 +20,7 @@ class QueryConfig:
     query_everything_fisrt_iter : bool = False
 
     # Only used in random query
-    n_feedback_per_query : int = 16
+    n_feedback_per_query : int = 64
     # n_feedback_per_query : int = 10
 
     # Only used in active query methods where number of queries vary in each loop.

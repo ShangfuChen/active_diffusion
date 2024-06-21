@@ -6,10 +6,10 @@ class HumanEncoderConfig:
     batch_size : int = 32
     shuffle : bool = True
     lr : float = 1e-6
-    n_epochs : int = 150
+    n_epochs : int = 200
     # n_epochs : int = 10
     save_dir : Optional[str] = None
-    save_every : int = 1500
+    save_every : int = 1
     agent1_triplet_margin : float = 1.0
     agent2_triplet_margin : float = 1.0
     agent1_loss_weight : float = 1.0
