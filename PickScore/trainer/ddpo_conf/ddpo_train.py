@@ -130,8 +130,20 @@ class DDPOTrainConfig:
     # prompt_fn: str = "cute_cats"
     # prompt_fn: str = "ugly_cats"
     # prompt_fn: str = "street"
-    prompt_fn: str = "test_prompt"
+    # prompt_fn: str = "test_prompt"
     # prompt_fn: str = "cute_animals"
+
+    ####### Prompts for Our Tasks ########
+    # prompt_fn: str = "blue_rose"
+    # prompt_fn: str = "narcissus"
+    # prompt_fn: str = "black_cat"
+    prompt_fn: str = "mountains"
+    # prompt_fn: str = "aesthetic_dog"
+    # prompt_fn: str = "cyberpunk_cat"
+    # prompt_fn: str = "bouquet"
+    # prompt_fn: str = "street"
+    # prompt_fn: str = "hand"
+
     # kwargs to pass to the prompt function.
 
     ###### Reward Function ######

@@ -68,16 +68,42 @@ def cute_cats():
 def ugly_cats():
     return from_file("ugly_cats.txt")
 
-
-def street():
-    return from_file("street.txt")
-
-
 def cute_animals(n_samples):
     return batch_prompts_from_file("cute_animals.txt", n_samples)
 
 def test_prompt():
     return from_file("test_prompt.txt")
+
+def reasoning_prompt():
+    return from_file("reasoning.txt")
+
+######### our tasks ##########
+def blue_rose():
+    return from_file("blue_rose.txt")
+
+def narcissus():
+    return from_file("narcissus.txt")
+
+def black_cat():
+    return from_file("black_cat.txt")
+
+def mountains():
+    return from_file("mountains.txt")
+
+def aesthetic_dog():
+    return from_file("aesthetic_dog.txt")
+
+def cyberpunk_cat():
+    return from_file("cyberpunk_cat.txt")
+
+def bouquet():
+    return from_file("bouquet.txt")
+
+def street():
+    return from_file("street.txt")
+
+def hand():
+    return from_file("hand.txt")
 
 
 def nouns_activities(nouns_file, activities_file):
