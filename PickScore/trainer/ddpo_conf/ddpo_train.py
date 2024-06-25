@@ -8,20 +8,28 @@ import ml_collections
 @dataclass
 class DDPOTrainConfig:
     # config = ml_collections.ConfigDict()
-    n_outer_loops: int = 60 # number of times ddpo train should be called
+    n_outer_loops: int = 9 # number of times ddpo train should be called
     save_dataset: bool = True
-    dataset_save_path: str = "/home/hayano/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
+    dataset_save_path: str = "/home/shangfu/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
     project_name: str = "debug"
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
 
     # run_name: str = "query_everything_raw_reward"
+    # run_name: str = "ddim_1_hand"
     # run_name: str = "debug"
+    run_name: str = "mountain_realhuman_seed0"
+    # run_name: str = "narcissus_from_best_noise_0.01"
     # run_name: str = "query_everything_raw_reward_softmax"
-    run_name: str = "query_everything_similarity_to_all_pos"
+    # run_name: str = "query_everything_similarity_to_all_pos"
     # run_name: str = "query_everything_with_similarity"
 
-    save_dir: str = "/data/hayano"
+    # sample_from_best_latent: bool = False
+    sample_from_best_latent: bool = True
+    reward_mode: str = "similarity-to-best-sample"
+    # reward_mode: str = "similarity-to-all-positive"
+
+    save_dir: str = "/data/shangfu"
 
     # random seed for reproducibility.
     seed: int = 0
@@ -30,8 +38,8 @@ class DDPOTrainConfig:
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
     # samples.
     num_epochs: int = 100
-    # number of epochs between saving model checkpoints.
-    save_freq: int = 20
+    # number of epochs between saving model checkpoints. deactivate by setting a negative value
+    save_freq: int = -1
     # number of checkpoints to keep before overwriting old ones.
     num_checkpoint_limit: int = 5
     # mixed precision training. options are "fp16", "bf16", and "no". half-precision speeds up training significantly.
@@ -41,6 +49,7 @@ class DDPOTrainConfig:
     # resume training from a checkpoint. either an exact checkpoint directory (e.g. checkpoint_50), or a directory
     # containing checkpoints, in which case the latest one will be used. `config.use_lora` must be set to the same value
     # as the run that generated the saved checkpoint.
+    # resume_from: str = "logs/ddim_1_hand/checkpoints/checkpoint_0"
     resume_from: str = ""
     # whether or not to use LoRA. LoRA reduces memory usage significantly by injecting small weight matrices into the
     # attention layers of the UNet. with LoRA, fp16, and a batch size of 1, finetuning Stable Diffusion should take
@@ -49,7 +58,7 @@ class DDPOTrainConfig:
     use_lora: bool = True
 
     ###### Pretrained Model ######
-    # config.pretrained = pretrained = ml_collections.ConfigDict()
+    pretrained = pretrained = ml_collections.ConfigDict()
     # base model to load. either a path to a local directory, or a model name from the HuggingFace model hub.
     pretrained_model: str = "runwayml/stable-diffusion-v1-5"
     # pretrained_model: str = "stabilityai/stable-diffusion-2-1"
@@ -59,8 +68,8 @@ class DDPOTrainConfig:
     ###### Sampling ######
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    sample_num_steps: int = 20
-    # sample_num_steps: int = 4
+    sample_num_steps: int = 50
+    # sample_num_steps: int = 5
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
     sample_eta: float = 1.0
@@ -72,7 +81,7 @@ class DDPOTrainConfig:
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
     sample_num_batches_per_epoch: int = 16
-    # sample_num_batches_per_epoch: int = 4
+    # sample_num_batches_per_epoch: int = 25
     # sample_num_batches_per_epoch: int = 32
     
     ###### Training ######

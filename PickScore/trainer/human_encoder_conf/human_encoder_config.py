@@ -4,9 +4,10 @@ from typing import Optional
 @dataclass
 class HumanEncoderConfig:
     batch_size : int = 32
+    # batch_size : int = 50
     shuffle : bool = True
     lr : float = 1e-6
-    n_epochs : int = 150
+    n_epochs : int = 400
     # n_epochs : int = 10
     save_dir : Optional[str] = None
     save_every : int = 1500
@@ -20,6 +21,6 @@ class HumanEncoderConfig:
     output_dim : int = 512
     # save_dir : str = "/data/hayano/ensemble_warmup5_minquery20_dynamicthresh_0_6_minq10always_unnormalizedpickscore2/human_encoder"
     n_data_needed_for_training : int = 64
-    # n_data_needed_for_training : int = 10
+    # n_data_needed_for_training : int = 100
     n_warmup_epochs: int = 0
     name : str = "human_encoder"

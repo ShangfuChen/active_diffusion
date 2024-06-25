@@ -204,7 +204,7 @@ class TripletEncoderTrainer:
             "shuffle" : True,
             "lr" : 1e-6,
             "n_epochs" : 50,
-            "triplet_margin" : 0.25,
+            "triplet_margin" : 0.5,
             "save_every" : 50,
             "input_dim" : 32768,
             "n_hidden_layers" : 5,

@@ -158,8 +158,8 @@ def main(cfg: TrainerConfig) -> None:
                 epoch=loop,
                 save_images=True,
                 img_save_dir=img_save_dir,
-                # high_reward_latents=best_noise_latent,
-                high_reward_latents=positive_noise_latents,
+                high_reward_latents=best_noise_latent,
+                # high_reward_latents=positive_noise_latents,
             )
         else:
             print("sampling from random latent")

@@ -346,15 +346,25 @@ class DDPOTrainer:
 
             # Add a small perturbation on the high reward latents
             if high_reward_latents is not None:
-                condition_latents = []
+                ### sampled from interpolated latents
+                # condition_latents = []
+                # for i in range(self.config.sample_batch_size):
+                #     best_latent = high_reward_latents[-1]
+                #     pos_index = random.choice(np.arange(high_reward_latents.shape[0]-1))
+                #     pos_latent = high_reward_latents[pos_index]
+                #     alpha = random.random()
+                #     condition_latents.append((alpha*best_latent + (1-alpha)*pos_latent).unsqueeze(0))
+                # condition_latents = torch.cat(condition_latents)
+
                 ### sampled from multiple latents
+                # condition_latents = []
                 # for i in range(self.config.sample_batch_size):
                 #     condition_latents.append(high_reward_latents[positive_index].unsqueeze(0))
                 #     positive_index += 1
                 #     if positive_index == high_reward_latents.shape[0]:
                 #         positive_index = 0
                 # condition_latents = torch.cat(condition_latents)
-                
+
                 ### scheduled noise ###
                 # condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
                 # noise = torch.arange(self.config.sample_batch_size)*1/self.config.sample_batch_size
@@ -364,7 +374,7 @@ class DDPOTrainer:
                 
                 ### fixed noise ###
                 # condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
-                # noise = torch.Tensor([0]).to(self.accelerator.device)
+                # noise = torch.Tensor([0.1]).to(self.accelerator.device)
                 # alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)   
                 # condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
                 

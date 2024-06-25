@@ -19,8 +19,8 @@ class QueryConfig:
     query_everything_fisrt_iter : bool = False
 
     # Only used in random query
-    n_feedback_per_query : int = 16
-    # n_feedback_per_query : int = 10
+    n_feedback_per_query : int = 64
+    # n_feedback_per_query : int = 100
 
     # Only used in active query methods where number of queries vary in each loop.
     # If not enough queries are chosen, choose queries randomly to meet this minimum requirement    
