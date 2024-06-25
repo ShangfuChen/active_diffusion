@@ -10,7 +10,7 @@ class HumanEncoderConfig:
     n_epochs : int = 400
     # n_epochs : int = 10
     save_dir : Optional[str] = None
-    save_every : int = 1500
+    save_every : int = 1
     agent1_triplet_margin : float = 1.0
     agent2_triplet_margin : float = 1.0
     agent1_loss_weight : float = 1.0

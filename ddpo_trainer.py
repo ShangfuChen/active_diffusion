@@ -346,38 +346,44 @@ class DDPOTrainer:
 
             # Add a small perturbation on the high reward latents
             if high_reward_latents is not None:
-                ### sampled from interpolated latents
-                # condition_latents = []
-                # for i in range(self.config.sample_batch_size):
-                #     best_latent = high_reward_latents[-1]
-                #     pos_index = random.choice(np.arange(high_reward_latents.shape[0]-1))
-                #     pos_latent = high_reward_latents[pos_index]
-                #     alpha = random.random()
-                #     condition_latents.append((alpha*best_latent + (1-alpha)*pos_latent).unsqueeze(0))
-                # condition_latents = torch.cat(condition_latents)
+                condition_latents = []
 
                 ### sampled from multiple latents
-                # condition_latents = []
-                # for i in range(self.config.sample_batch_size):
-                #     condition_latents.append(high_reward_latents[positive_index].unsqueeze(0))
-                #     positive_index += 1
-                #     if positive_index == high_reward_latents.shape[0]:
-                #         positive_index = 0
-                # condition_latents = torch.cat(condition_latents)
+                if self.config.sample_latent_type == "good_without_noise":
+                    for i in range(self.config.sample_batch_size):
+                        condition_latents.append(high_reward_latents[positive_index].unsqueeze(0))
+                        positive_index += 1
+                        if positive_index == high_reward_latents.shape[0]:
+                            positive_index = 0
+                    condition_latents = torch.cat(condition_latents)
+                
+                ### sampled from interpolated latents
+                elif self.config.sample_latent_type == "interpolate_good":
+                    for i in range(self.config.sample_batch_size):
+                        best_latent = high_reward_latents[-1]
+                        pos_index = random.choice(np.arange(high_reward_latents.shape[0]-1))
+                        pos_latent = high_reward_latents[pos_index]
+                        alpha = random.random()
+                        condition_latents.append((alpha*best_latent + (1-alpha)*pos_latent).unsqueeze(0))
+                    condition_latents = torch.cat(condition_latents)
 
                 ### scheduled noise ###
-                # condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
-                # noise = torch.arange(self.config.sample_batch_size)*1/self.config.sample_batch_size
-                # alpha = torch.sqrt(1-noise*noise)
-                # noise = torch.reshape(noise, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
-                # alpha = torch.reshape(alpha, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
+                elif self.config.sample_latent_type == "best_scheduled":
+                    condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
+                    noise = torch.arange(self.config.sample_batch_size)*1/self.config.sample_batch_size
+                    alpha = torch.sqrt(1-noise*noise)
+                    noise = torch.reshape(noise, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
+                    alpha = torch.reshape(alpha, (self.config.sample_batch_size, 1, 1, 1)).expand(self.config.sample_batch_size, 4, 64, 64).to(self.accelerator.device)
                 
                 ### fixed noise ###
-                # condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
-                # noise = torch.Tensor([0.1]).to(self.accelerator.device)
-                # alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)   
-                # condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
+                elif self.config.sample_latent_type == "best_with_fixed_noise":
+                    condition_latents = high_reward_latents.expand(self.config.sample_batch_size, 4, 64, 64)
+                    noise = torch.Tensor([self.config.latent_noise]).to(self.accelerator.device)
+                    alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)   
+                    condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
                 
+
+
                 condition_latents = condition_latents.half()
             else:
                 condition_latents = None
@@ -713,8 +719,8 @@ class DDPOTrainer:
             assert self.accelerator.sync_gradients
         # TODO #
         # Does not support model saving now
-        # if epoch != 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
-            # self.accelerator.save_state()
+        if epoch != 0 and epoch % self.config.save_freq == 0 and self.accelerator.is_main_process:
+            self.accelerator.save_state()
 
         return epoch
 

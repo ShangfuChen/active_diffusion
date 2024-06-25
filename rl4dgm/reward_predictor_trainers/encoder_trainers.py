@@ -307,7 +307,6 @@ class TripletEncoderTrainer:
         self.n_calls_to_train += 1
         n_steps = 0
         for epoch in range(self.config["n_epochs"]):
-            self.n_total_epochs += 1
             running_losses = []
             if epoch % 100 == 0:
                 print("TripletEncoder training epoch", epoch)
@@ -322,7 +321,6 @@ class TripletEncoderTrainer:
                 self.optimizer.step()
                 running_losses.append(loss.item())
                 n_steps += 1
-                self.n_total_epochs += 1
 
                 self.accelerator.log({
                     f"{self.name}_epoch" : self.n_total_epochs,
@@ -331,13 +329,16 @@ class TripletEncoderTrainer:
                     f"{self.name}_lr" : self.config["lr"],
                     f"{self.name}_clock_time" : time.time() - self.start_time,
                 })
-            
-            # save checkpoint
-            if (self.n_total_epochs > 0) and (self.n_total_epochs % self.config["save_every"]) == 0:
-                self.save_model_ckpt()
-                # model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
-                # torch.save(self.model.state_dict(), model_save_path)
-                # print("TripletEncoder model checkpoint saved to", model_save_path)
+
+            self.n_total_epochs += 1
+        
+        print(f"encoder treained for {self.n_calls_to_train} times")
+        # save checkpoint
+        if (self.n_calls_to_train > 0) and (self.n_calls_to_train % self.config["save_every"]) == 0:
+            self.save_model_ckpt()
+            # model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
+            # torch.save(self.model.state_dict(), model_save_path)
+            # print("TripletEncoder model checkpoint saved to", model_save_path)
 
     def eval_model(self):
         with torch.no_grad():
@@ -362,7 +363,7 @@ class TripletEncoderTrainer:
                 })
 
     def save_model_ckpt(self):
-        model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
+        model_save_path = os.path.join(self.save_dir, f"epoch{self.n_calls_to_train}.pt")
         torch.save(self.model.state_dict(), model_save_path)
         print("TripletEncoder model checkpoint saved to", model_save_path)
 
@@ -543,8 +544,8 @@ class DoubleTripletEncoderTrainer:
                 })
 
             # save checkpoint
-            if (self.n_total_epochs > 0) and (self.n_total_epochs % self.config["save_every"]) == 0:
-                model_save_path = os.path.join(self.save_dir, f"epoch{self.n_total_epochs}.pt")
+            if (self.n_calls_to_train > 0) and (self.n_calls_to_train % self.config["save_every"]) == 0:
+                model_save_path = os.path.join(self.save_dir, f"epoch{self.n_calls_to_train}.pt")
                 torch.save(self.model.state_dict(), model_save_path)
                 print("DoubleTripletEncoder model checkpoint saved to", model_save_path)
 
