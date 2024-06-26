@@ -121,6 +121,60 @@ class TripletDatasetWithPositiveNegativeBest(Dataset):
             negative_feature = self.features[negative_index]
         return anchor_feature, 0, positive_feature, negative_feature # 0 is dummy and not used
 
+class TripletDatasetWithPositiveNegative(Dataset):
+    def __init__(
+        self,
+        features,
+        positive_indices,
+        negative_indices,
+        # best_sample_feature,
+        device,
+        is_train=False,
+        sampling_method="default",
+    ):
+        self.features = features.float().to(device)
+        # self.best_sample_feature = best_sample_feature.float().to(device)
+        self.is_train = is_train
+        self.positive_indices = positive_indices
+        self.negative_indices = negative_indices
+
+        self.sampling_method = sampling_method
+        sampling_methods = [
+            "default",
+        ]
+        assert sampling_method in sampling_methods, f"Sampling method must be one of {sampling_methods}. Got {sampling_method}"
+
+    def __len__(self):
+        # return self.features.shape[0]
+        return len(self.positive_indices)
+
+    def __getitem__(self, idx):
+
+        # print("getitem ", idx)
+        # given index, return anchor, positive, and negative samples
+        
+        # get anchor sample (anchor is always positive sample)
+        anchor_index = self.positive_indices[idx]
+        anchor_feature = self.features[anchor_index]
+        # anchor_index = random.choice(self.positive_indices)
+        # anchor_feature = self.
+
+        ##############################################################################################
+        # Sample positive (and negative) samples randomly from top 10% most (least) similar samples
+        ##############################################################################################
+        
+        if self.sampling_method == "default":
+            # choose positive feature from positive samples (excluding the anchor)
+            positive_index = random.choice(
+                np.setdiff1d(np.array(self.positive_indices), np.array([anchor_index]))
+            )
+            positive_feature = self.features[positive_index]
+
+            # choose negative fature from negative samples
+            negative_index = random.choice(self.negative_indices)
+            negative_feature = self.features[negative_index]
+
+        return anchor_feature, 0, positive_feature, negative_feature # 0 is dummy and not used
 
 class TripletDataset(Dataset):
     def __init__(
