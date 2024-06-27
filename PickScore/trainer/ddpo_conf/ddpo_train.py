@@ -13,16 +13,13 @@ class DDPOTrainConfig:
     dataset_save_path: str = "/home/shangfu/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
     project_name: str = "active-diffusion"
 
-    reward_mode: str = "similarity-to-best-sample"
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
-    run_name: str = "debug"
+    # run_name: str = "debug"
+    run_name: str = "mountain_realhuman_positive"
 
-
-    # sample_from_best_latent: bool = False
-    sample_from_best_latent: bool = True
-    reward_mode: str = "similarity-to-best-sample"
-    # reward_mode: str = "similarity-to-all-positive"
+    # reward_mode: str = "similarity-to-best-sample"
+    reward_mode: str = "similarity-to-all-positive"
 
     save_dir: str = "/data/shangfu"
 
@@ -30,20 +27,20 @@ class DDPOTrainConfig:
     # sample_latent_type: str = "best_with_fixed_noise"
     # sample_latent_type: str = "best_scheduled"
     sample_latent_type: str = "good_without_noise" # how to sample
-    sample_from_best_latent: bool = True # whether to sample from best latent
+    sample_from_best_latent: bool = False # whether to sample from best latent
     sample_from_all_good_latents: bool = True # if true, use best + good latents
-    latent_noise: float = 0.0
+    latent_noise: float = 0.1
 
 
     # random seed for reproducibility.
     seed: int = 1
     # top-level logging directory for checkpoint saving.
-    logdir: str = "logs"
+    logdir: str = "/data/shangfu/model_checkpoints"
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
     # samples.
     num_epochs: int = 100
     # number of epochs between saving model checkpoints. deactivate by setting a negative value
-    save_freq: int = -1
+    save_freq: int = 1
     # number of checkpoints to keep before overwriting old ones.
     num_checkpoint_limit: int = 5
     # mixed precision training. options are "fp16", "bf16", and "no". half-precision speeds up training significantly.
