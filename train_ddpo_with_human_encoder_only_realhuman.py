@@ -38,7 +38,7 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/shangfu/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir, exist_ok=False)
     
@@ -230,17 +230,18 @@ def main(cfg: TrainerConfig) -> None:
         )
         if new_best_sample_index is not None:
             is_best_image_updated = True
+            positive_indices = np.setdiff1d(positive_indices, new_best_sample_index)
             # if best sample was updated, update best_sample_latent
             best_sample_latent_prev = best_sample_latent
             best_sample_latent = sd_features[query_indices[new_best_sample_index]]
             best_noise_latent = sd_noises[query_indices[new_best_sample_index]].unsqueeze(0)
-            positive_noise_latents = sd_noises[query_indices[positive_indices]]
         else:
-            positive_noise_latents = torch.cat([
-                sd_noises[query_indices[positive_indices]],
-                best_noise_latent,
-            ], dim=0)
             is_best_image_updated = False
+
+        positive_noise_latents = torch.cat([
+            sd_noises[query_indices[positive_indices]],
+            best_noise_latent,
+        ], dim=0)
 
         # add to human dataset
         human_dataset.add_data(
@@ -310,6 +311,7 @@ def main(cfg: TrainerConfig) -> None:
             positive_sample_encodings = positive_sample_encodings.unsqueeze(1).expand(expand_dim)
             human_encodings = human_encodings.unsqueeze(0).expand(expand_dim)
             final_rewards = torch.nn.functional.cosine_similarity(human_encodings, positive_sample_encodings, dim=2).mean(0)
+            final_rewards = (final_rewards+1)/2
 
 
         ### Ground truth human reward ### (for query everything)

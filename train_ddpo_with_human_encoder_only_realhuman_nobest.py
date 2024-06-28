@@ -38,7 +38,7 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/shangfu/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir, exist_ok=False)
     
@@ -191,7 +191,7 @@ def main(cfg: TrainerConfig) -> None:
             with torch.no_grad():
                 human_encodings = human_encoder_trainer.model(sd_features)
                 best_sample_encoding = human_encoder_trainer.model(best_sample_latent)
-                predicted_cossim = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
+                # predicted_cossim = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
 
         ############################################################
         # Active query --> get human rewards
