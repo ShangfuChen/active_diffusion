@@ -314,7 +314,7 @@ class DDPOTrainer:
         self.samples = []
         self.prompts = []
         all_rewards = []
-        positive_index = 0
+        sample_index = 0
         
         for i in self.tqdm(
             range(self.config.sample_num_batches_per_epoch),
@@ -351,10 +351,10 @@ class DDPOTrainer:
                 ### sampled from multiple latents
                 if self.config.sample_latent_type == "good_without_noise":
                     for i in range(self.config.sample_batch_size):
-                        condition_latents.append(high_reward_latents[positive_index].unsqueeze(0))
-                        positive_index += 1
-                        if positive_index == high_reward_latents.shape[0]:
-                            positive_index = 0
+                        condition_latents.append(high_reward_latents[sample_index].unsqueeze(0))
+                        sample_index += 1  # sample index from 0 to N positive samples 
+                        if sample_index == high_reward_latents.shape[0]:
+                            sample_index = 0
                     condition_latents = torch.cat(condition_latents)
                 
                 ### sampled from interpolated latents
@@ -382,8 +382,22 @@ class DDPOTrainer:
                     alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)   
                     condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
                 
-
-
+                ### best and good with fixed noise ###
+                elif self.config.sample_latent_type == "best_and_good_fixed_noise":
+                    num_best_sample = self.config.sample_num_batches_per_epoch * self.config.sample_batch_size * self.config.best_latent_ratio
+                    for i in range(self.config.sample_batch_size):
+                        if sample_index < num_best_sample:
+                            condition_latents.append(high_reward_latents[-1].unsqueeze(0))
+                        else:
+                            pos_index = random.choice(np.arange(high_reward_latents.shape[0]-1))
+                            condition_latents.append(high_reward_latents[pos_index].unsqueeze(0))
+                        sample_index += 1 # sample index from 0 to total_batch_size - 1 (sample_batch_size * num_bat)
+                    condition_latents = torch.cat(condition_latents)
+                    # add noise on all latents
+                    noise = torch.Tensor([self.config.latent_noise]).to(self.accelerator.device)
+                    alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)   
+                    condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
+    
                 condition_latents = condition_latents.half()
             else:
                 condition_latents = None
