@@ -4,13 +4,14 @@ from typing import Optional
 import torch
 import ml_collections
 
+EXPERIMENTER_NAME = "hayano"
 
 @dataclass
 class DDPOTrainConfig:
     # config = ml_collections.ConfigDict()
     n_outer_loops: int = 9 # number of times ddpo train should be called
     save_dataset: bool = True
-    dataset_save_path: str = "/home/shangfu/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
+    dataset_save_path: str = f"/home/{EXPERIMENTER_NAME}/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
     project_name: str = "active-diffusion"
 
     ###### General ######
@@ -21,7 +22,7 @@ class DDPOTrainConfig:
     reward_mode: str = "similarity-to-best-sample"
     # reward_mode: str = "similarity-to-all-positive"
 
-    save_dir: str = "/data/shangfu"
+    save_dir: str = f"/data/{EXPERIMENTER_NAME}"
 
     # Sampling methods
     # sample_latent_type: str = "best_with_fixed_noise"
@@ -37,7 +38,7 @@ class DDPOTrainConfig:
     # random seed for reproducibility.
     seed: int = 1
     # top-level logging directory for checkpoint saving.
-    logdir: str = "/data/shangfu/model_checkpoints"
+    logdir: str = f"/data/{EXPERIMENTER_NAME}/model_checkpoints"
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
     # samples.
     num_epochs: int = 100
@@ -71,8 +72,8 @@ class DDPOTrainConfig:
     ###### Sampling ######
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    # sample_num_steps: int = 50
-    sample_num_steps: int = 5
+    sample_num_steps: int = 50
+    # sample_num_steps: int = 5
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
     sample_eta: float = 1.0

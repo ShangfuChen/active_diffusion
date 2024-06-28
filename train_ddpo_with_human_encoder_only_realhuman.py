@@ -38,7 +38,7 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/shangfu/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir, exist_ok=False)
     
@@ -112,7 +112,10 @@ def main(cfg: TrainerConfig) -> None:
     # Initialize feedback interfaces
     ############################################
     if cfg.query_conf.feedback_agent == "human":
-        feedback_interface = HumanFeedbackInterface(feedback_type="positive-indices")
+        feedback_interface = HumanFeedbackInterface(
+            feedback_type="positive-indices",
+            run_name=cfg.ddpo_conf.run_name.split("_")[0],
+        )
     elif cfg.query_conf.feedback_agent == "ai":
         feedback_interface = AIFeedbackInterface(
             feedback_type="score-one",

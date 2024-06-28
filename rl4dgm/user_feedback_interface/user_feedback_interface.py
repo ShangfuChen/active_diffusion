@@ -519,6 +519,7 @@ class HumanFeedbackInterface(FeedbackInterface):
         self,
         feedback_type="pick-one",
         query_image_size=(2048,512),
+        run_name="",
         **kwargs,
     ):
         """
@@ -547,6 +548,9 @@ class HumanFeedbackInterface(FeedbackInterface):
 
         # whether to keep track of best image
         self.use_best_image = kwargs["use_best_image"] if "use_best_image" in kwargs.keys() else False
+
+        # run name to save separate query images for each run
+        self.run_name = run_name
 
     def _get_feedback(self, valid_options=None, **kwargs):
         if valid_options is None:
@@ -671,7 +675,7 @@ class HumanFeedbackInterface(FeedbackInterface):
         self._save_query_image(
             images=pil_images,
             prompt="Choose the best image",
-            img_save_path="real_human_ui_images/query_image.png",
+            img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
             custom_image_size=(4096,2048),
         )
         # if this is the first query, have evaluator choose the first best image
@@ -684,7 +688,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=self.best_image,
                 prompt="Best image so far",
-                img_save_path="real_human_ui_images/best_image.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
                 custom_image_size=(512,512),
             )
 
@@ -701,7 +705,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=best_image_candidates,
                 prompt="Choose the best image",
-                img_save_path="real_human_ui_images/best_image_candidates.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_best_image_candidates.png",
                 custom_image_size=(1024,1024),
             )
             best_image_index = self._get_raw_feedback(valid_options=np.arange(1, len(best_image_candidates)+1)) - 1
@@ -713,7 +717,7 @@ class HumanFeedbackInterface(FeedbackInterface):
                 self._save_query_image(
                     images=self.best_image,
                     prompt="Best image so far",
-                    img_save_path="real_human_ui_images/best_image.png",
+                    img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
                     custom_image_size=(512,512),
                 )
             else:
@@ -740,7 +744,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=images,
                 prompt=prompt,
-                img_save_path="real_human_ui_images/query_image.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
             )
             # Get feedback
             feedback = self._get_feedback(prompt=prompt, images=images)
@@ -766,14 +770,14 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=images,
                 prompt=prompt,
-                img_save_path="real_human_ui_images/query_image.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
             )
 
             # save reference image (most recent image given each score)
             self._save_query_image(
                 images=list(self.reference_images.values()),
                 prompt="Reference images",
-                img_save_path="real_human_ui_images/reference_image.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_reference_image.png",
             )
             pil_images += images
 
@@ -806,7 +810,7 @@ class HumanFeedbackInterface(FeedbackInterface):
                 self._save_query_image(
                     images=best_images,
                     prompt="Best image candidates",
-                    img_save_path="real_human_ui_images/best_image_candidates.png",
+                    img_save_path=f"real_human_ui_images/{self.run_name}_best_image_candidates.png",
                 )
                 best_image_index = self._get_raw_feedback(valid_options=np.arange(len(best_images))+1)
                 self.best_image = best_images[best_image_index - 1]
@@ -815,7 +819,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=self.best_image,
                 prompt="Best image so far",
-                img_save_path="real_human_ui_images/best_image.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
             )
 
         return feedbacks # in case getting values directly is more convenient than saving as datafile
@@ -832,7 +836,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=pil_images,
                 prompt="Choose the best image",
-                img_save_path="real_human_ui_images/best_image_candidates.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_best_image_candidates.png",
             )
             best_image_index = self._get_raw_feedback(valid_options=np.arange(1, len(pil_images)+1)) - 1
             self.best_image = pil_images[best_image_index]
@@ -842,7 +846,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=self.best_image,
                 prompt="Best image so far",
-                img_save_path="real_human_ui_images/best_image.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
             )
         
         print("Start collecting feedback")
@@ -856,7 +860,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=images,
                 prompt=prompt,
-                img_save_path="real_human_ui_images/query_image.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
             )
 
             # TODO - this mode currently does not support reference image saving
@@ -902,7 +906,7 @@ class HumanFeedbackInterface(FeedbackInterface):
                 self._save_query_image(
                     images=best_images,
                     prompt="Best image candidates",
-                    img_save_path="real_human_ui_images/best_image_candidates.png",
+                    img_save_path=f"real_human_ui_images/{self.run_name}_best_image_candidates.png",
                 )
                 best_image_index = self._get_raw_feedback(valid_options=np.arange(len(best_images))+1)
                 self.best_image = best_images[best_image_index - 1]
@@ -911,7 +915,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             self._save_query_image(
                 images=self.best_image,
                 prompt="Best image so far",
-                img_save_path="real_human_ui_images/best_image.png",
+                img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
             )
 
         self.is_first_batch = False
