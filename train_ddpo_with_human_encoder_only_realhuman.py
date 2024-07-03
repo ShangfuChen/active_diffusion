@@ -111,10 +111,14 @@ def main(cfg: TrainerConfig) -> None:
     ############################################
     # Initialize feedback interfaces
     ############################################
+    run_name = cfg.ddpo_conf.run_name.split("_")[0]
+    latent_save_dir = os.path.join(cfg.ddpo_conf.logdir, run_name, "latents")
+    os.makedirs(latent_save_dir)
+
     if cfg.query_conf.feedback_agent == "human":
         feedback_interface = HumanFeedbackInterface(
             feedback_type="positive-indices",
-            run_name=cfg.ddpo_conf.run_name.split("_")[0],
+            run_name=run_name,
         )
     elif cfg.query_conf.feedback_agent == "ai":
         feedback_interface = AIFeedbackInterface(
@@ -350,6 +354,17 @@ def main(cfg: TrainerConfig) -> None:
             n_ddpo_train_calls += 1
         else:
             print(f"Human encoder and error predictor warmup has not completed. Skipping DDPO training. Warmup step {human_encoder_trainer.n_calls_to_train}/{cfg.human_encoder_conf.n_warmup_epochs}")
+
+        # if model checkpoint should be saved in this iteration, save the best and positive latents
+        if (loop % cfg.ddpo_conf.save_freq == 0) and accelerator.is_main_process:
+            torch.save(
+                best_noise_latent, 
+                os.path.join(latent_save_dir, f"best_{loop}.pt")
+            )
+            torch.save(
+                positive_noise_latents, 
+                os.path.join(latent_save_dir, f"positives_{loop}.pt")
+            )
 
         # increment loop
         loop += 1
