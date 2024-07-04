@@ -15,7 +15,7 @@ class DDPOInferenceConfig:
     # containing checkpoints, in which case the latest one will be used. `config.use_lora` must be set to the same value
     # as the run that generated the saved checkpoint.
     # resume_from: str = "logs/ddim_1_hand/checkpoints/checkpoint_0"
-    resume_from: str = "" # use this if NOT loading model checkpoint
+    # resume_from: str = "" # use this if NOT loading model checkpoint
     resume_from: str = f"{CHECKPOINT_DIR}/checkpoints/checkpoint_{EPOCH}" # use this when loading checkpoint
 
     ckpt_dir: str = f"{CHECKPOINT_DIR}" # root model directory used for latent loading
@@ -91,11 +91,12 @@ class DDPOInferenceConfig:
     # classifier-free guidance weight. 1.0 is no guidance.
     sample_guidance_scale: float = 5.0
     # batch size (per GPU!) to use for sampling.
-    sample_batch_size: int = 4
-    # sample_batch_size: int = 8
+    # sample_batch_size: int = 4
+    sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    sample_num_batches_per_epoch: int = 16
+    # sample_num_batches_per_epoch: int = 16
+    sample_num_batches_per_epoch: int = 250
     # sample_num_batches_per_epoch: int = 25
     # sample_num_batches_per_epoch: int = 32
     
