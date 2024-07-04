@@ -98,7 +98,7 @@ def main(cfg: TrainerConfig) -> None:
         trainset=None,
         testset=None,
         accelerator=accelerator,
-        save_dir=os.path.join(cfg.ddpo_conf.save_dir, cfg.ddpo_conf.run_name, "human_encoder"),
+        save_dir=os.path.join(cfg.ddpo_conf.logdir, cfg.ddpo_conf.run_name, "human_encoder"),
     )
     print("...done\n")
 
@@ -111,14 +111,13 @@ def main(cfg: TrainerConfig) -> None:
     ############################################
     # Initialize feedback interfaces
     ############################################
-    run_name = cfg.ddpo_conf.run_name.split("_")[0]
-    latent_save_dir = os.path.join(cfg.ddpo_conf.logdir, run_name, "latents")
+    latent_save_dir = os.path.join(cfg.ddpo_conf.logdir, cfg.ddpo_conf.run_name, "latents")
     os.makedirs(latent_save_dir)
 
     if cfg.query_conf.feedback_agent == "human":
         feedback_interface = HumanFeedbackInterface(
             feedback_type="positive-indices",
-            run_name=run_name,
+            run_name=cfg.ddpo_conf.run_name,
         )
     elif cfg.query_conf.feedback_agent == "ai":
         feedback_interface = AIFeedbackInterface(

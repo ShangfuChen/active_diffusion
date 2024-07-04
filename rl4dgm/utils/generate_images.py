@@ -1,155 +1,78 @@
 
-import argparse
 import os 
-import csv
 import numpy as np
 import random
-import shutil
+import hydra
+from ddpo_trainer import DDPOTrainer
 
 import torch 
-from diffusers import DiffusionPipeline
+from PickScore.trainer.configs.configs import TrainerConfig, instantiate_with_cfg
+from accelerate.utils import set_seed, ProjectConfiguration
+from accelerate import Accelerator
+from accelerate.logging import get_logger
 
-class ImageGenerator:
 
-    def __init__(self,):
-        self.TASK_TO_PROMPTS = {
-            "cat" : [
-                "Cute black cat with round eyes",
-                "Demonic black cat with sharp eyes",
-                "Cute white cat with round eyes",
-                "Demonic white cat with sharp eyes",
-            ],
-            "ice cream" : [
-                "Premium soft serve ice cream",
-                "The world's most expensive soft serve ice cream",
-                "The world's most expensive soft serve ice cream, topped with edible gold and jewerly-like fruits",
-                "The world's most expensive soft serve ice cream, topped with edible gold and a tiara decorated by jewerly-like fruits",
-            ],
-        }
+@hydra.main(version_base=None, config_path="/home/hayano/active_diffusion/PickScore/trainer/conf", config_name="config")
+def main(cfg: TrainerConfig) -> None:
 
-    def generate_images(
-        self,
-        model, 
-        img_save_dir, 
-        prompt, 
-        n_images,
-        generator,
-        n_inference_steps=10,
-        img_dim=(256,256),
-        img_start_idx=0, # when calling this function multiple times to 
-    ):
-        # create image save folder
-        exist_ok = img_start_idx > 0 
-        if os.path.exists(img_save_dir) and not exist_ok:
-            # remove directory if it already exists
-            shutil.rmtree(img_save_dir)
-        os.makedirs(img_save_dir, exist_ok=exist_ok)
+    logger = get_logger(__name__)
 
-        n_imgs_saved = 0
-        while n_imgs_saved < n_images:
-            print("n images saved", n_imgs_saved)
-            n_imgs_per_prompt = n_images - n_imgs_saved
-            images = model( # list of PIL.Images
-                prompt,
-                num_inference_steps=n_inference_steps,
-                generator=generator,
-                num_images_per_prompt=n_imgs_per_prompt,
-                height=img_dim[0],
-                width=img_dim[1],
-            ).images
-            
-            for im in images:
-                # Get raw pixel values to see if the image is black (black image is generated if NSFW content is detected). Only save if it is not a black image
-                if np.all(np.array(im.getdata()) == [0,0,0]):
-                    print("NSFW black image generated. Not saving this image.")
-                else:
-                    im.save(os.path.join(img_save_dir, f"{n_imgs_saved + img_start_idx}.jpg"), "JPEG")
-                    n_imgs_saved += 1
-                
-        print(f"Generated {n_imgs_saved} images")
+    # set seed
+    np.random.seed(cfg.ddpo_conf_inference.seed)
+    torch.manual_seed(cfg.ddpo_conf_inference.seed)
+    random.seed(cfg.ddpo_conf_inference.seed)
+    torch.backends.cudnn.benchmark = False
+    torch.backends.cudnn.deterministic = True
+    torch.cuda.manual_seed(cfg.ddpo_conf_inference.seed)
+    accelerator_config = ProjectConfiguration(
+        project_dir=os.path.join(cfg.ddpo_conf_inference.logdir, cfg.ddpo_conf_inference.run_name),
+        automatic_checkpoint_naming=True,
+        total_limit=cfg.ddpo_conf_inference.num_checkpoint_limit,
+    )
 
-    def generate_images_from_prompt_list(
-        self,
-        model,
-        img_save_dir,
-        n_images,
-        generator,
-        prompts,
-        n_inference_steps=10,
-        img_dim=(256,256), 
-        separate_by_prompt=True,
-    ):
-        """
-        Given a list of prompts, generate a total number of n_images images. 
-
-        Args:
-            model : text-to-image model used to generate the images
-            img_save_dir (str) : where to save the generated images
-            prompts (list(str)) : lsit of prompts
-            n_inference_steps (int) : number of denoising steps to use for image generation
-            img_dim (2-tuple(int)) : size of images to generate
-            separate_by_prompt (bool) : whether to save images to separate directories by prompt
-                If True, images are saved to img_save_dir/prompt_with_spaces_replaced_by_underscores
-                If False, all images are saved to img_save_dir
-        """
-        img_folders = []
-
-        # Compute number of images to generate per prompt
-        n_prompts = len(prompts)
-        base_int = n_images // n_prompts
-        remainder = n_images % n_prompts
-        n_imgs_per_prompt = [base_int] * n_prompts
-        for i in range(remainder):
-            n_imgs_per_prompt[i] += 1
-        random.shuffle(n_imgs_per_prompt)
-
-        # Case for saving to separate directories
-        start_idx = 0
-        for prompt, n in zip(prompts, n_imgs_per_prompt):
-            img_save_folder = os.path.join(img_save_dir, prompt.replace(" ", "_"))
-            img_folders.append(img_save_folder)
-            self.generate_images(
-                model=model,
-                img_save_dir=img_save_folder,
-                prompt=prompt,
-                n_images=n,
-                generator=generator,
-                n_inference_steps=n_inference_steps,
-                img_dim=img_dim,
-                img_start_idx=0,
-            )
-
-        # Case for saving everything to same directory
-        for prompt, n in zip(prompts, n_imgs_per_prompt):
-            self.generate_images(
-                model=model,
-                img_save_dir=img_save_dir,
-                prompt=prompt,
-                n_images=n,
-                generator=generator,
-                n_inference_steps=n_inference_steps,
-                img_dim=img_dim,
-                img_start_idx=start_idx,
-            )
-            start_idx += n
-        
-
-    def generate_cat_images(
-        self,
-        model,
-        img_save_dir,
-        n_images,
-        generator,
-        n_inference_steps=10,
-        img_dim=(256,256),
-    ):
-        self.generate_images_from_prompt_list(
-            model=model,
-            img_save_dir=img_save_dir,
-            n_images=n_images,
-            generator=generator,
-            prompts=self.TASK_TO_PROMPTS["cat"],
-            n_inference_steps=n_inference_steps,
-            img_dim=img_dim,
+    accelerator = Accelerator(
+        log_with="wandb",
+        mixed_precision=cfg.ddpo_conf_inference.mixed_precision,
+        project_config=accelerator_config,
+        # we always accumulate gradients across timesteps; we want config.train_gradient_accumulation_steps to be the
+        # number of *samples* we accumulate across, so we need to multiply by the number of training timesteps to get
+        # the total number of optimizer steps to accumulate across.
+        gradient_accumulation_steps=cfg.ddpo_conf_inference.train_gradient_accumulation_steps*cfg.ddpo_conf_inference.train_num_update)
+    if accelerator.is_main_process:
+        accelerator.init_trackers(
+            project_name="debug",
+            config=dict(cfg),
+            init_kwargs={"wandb": {"name": cfg.ddpo_conf_inference.run_name}},
         )
-     
+    ddpo_trainer = DDPOTrainer(
+        config=cfg.ddpo_conf_inference, 
+        logger=logger, 
+        # accelerator=accelerator
+    )
+
+    # make directory to save the generated images
+    os.makedirs(cfg.ddpo_conf_inference.img_save_dir, exist_ok=True)
+    high_reward_latents = None
+
+    # if we loaded from a checkpoint, load latents as well
+    if len(cfg.ddpo_conf_inference.resume_from) > 0:
+        ckpt_epoch = cfg.ddpo_conf_inference.epoch
+        if cfg.ddpo_conf_inference.sample_from_best_latent:
+            # we only sample from the best latent
+            high_reward_latents = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"best_{epoch-1}.pt"))
+        elif cfg.ddpo_conf_inference.sample_from_all_good_latents:
+            # load best and good latents
+            best_latent = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"best_{epoch-1}.pt"))
+            pos_latents = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"positives_{epoch-1}.pt"))
+            high_reward_latents = torch.cat([pos_latents, best_latent], dim=0)        
+
+    samples, all_latents, prompts, ai_rewards = ddpo_trainer.sample(
+        logger=logger,
+        epoch=0,
+        save_images=True,
+        img_save_dir=img_save_dir,
+        high_reward_latents=high_reward_latents,
+    ) 
+
+if __name__ == "__main__":
+    main()

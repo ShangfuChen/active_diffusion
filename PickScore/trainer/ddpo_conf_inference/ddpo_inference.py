@@ -5,9 +5,24 @@ import torch
 import ml_collections
 
 EXPERIMENTER_NAME = "hayano"
+CHECKPOINT_DIR = "/data/hayano/model_checkpoints/mountain-0-25-best-seed0"
+EPOCH = 8
 
 @dataclass
-class DDPOTrainConfig:
+class DDPOInferenceConfig:
+
+    # resume training from a checkpoint. either an exact checkpoint directory (e.g. checkpoint_50), or a directory
+    # containing checkpoints, in which case the latest one will be used. `config.use_lora` must be set to the same value
+    # as the run that generated the saved checkpoint.
+    # resume_from: str = "logs/ddim_1_hand/checkpoints/checkpoint_0"
+    resume_from: str = "" # use this if NOT loading model checkpoint
+    resume_from: str = f"{CHECKPOINT_DIR}/checkpoints/checkpoint_{EPOCH}" # use this when loading checkpoint
+
+    ckpt_dir: str = f"{CHECKPOINT_DIR}" # root model directory used for latent loading
+    epoch: int = EPOCH
+    # where to save generated images
+    img_save_dir: str = "/home/hayano/test_image_generation"
+
     # config = ml_collections.ConfigDict()
     n_outer_loops: int = 9 # number of times ddpo train should be called
     save_dataset: bool = True
@@ -50,11 +65,7 @@ class DDPOTrainConfig:
     mixed_precision: str = "fp16"
     # allow tf32 on Ampere GPUs, which can speed up training.
     allow_tf32: bool = True
-    # resume training from a checkpoint. either an exact checkpoint directory (e.g. checkpoint_50), or a directory
-    # containing checkpoints, in which case the latest one will be used. `config.use_lora` must be set to the same value
-    # as the run that generated the saved checkpoint.
-    # resume_from: str = "logs/ddim_1_hand/checkpoints/checkpoint_0"
-    resume_from: str = ""
+
     # whether or not to use LoRA. LoRA reduces memory usage significantly by injecting small weight matrices into the
     # attention layers of the UNet. with LoRA, fp16, and a batch size of 1, finetuning Stable Diffusion should take
     # about 10GB of GPU memory. beware that if LoRA is disabled, training will take a lot of memory and saved checkpoint
@@ -84,8 +95,8 @@ class DDPOTrainConfig:
     # sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    sample_num_batches_per_epoch: int = 16
-    # sample_num_batches_per_epoch: int = 25
+    # sample_num_batches_per_epoch: int = 16
+    sample_num_batches_per_epoch: int = 25
     # sample_num_batches_per_epoch: int = 32
     
     ###### Training ######

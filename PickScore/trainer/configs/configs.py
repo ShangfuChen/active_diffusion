@@ -11,6 +11,7 @@ import PickScore.trainer.datasetss
 import PickScore.trainer.optimizers
 import PickScore.trainer.lr_schedulers
 import PickScore.trainer.ddpo_conf
+import PickScore.trainer.ddpo_conf_inference
 import PickScore.trainer.query_conf
 import PickScore.trainer.human_encoder_conf
 import PickScore.trainer.ai_encoder_conf
@@ -96,6 +97,7 @@ defaults = [
     # {"lr_scheduler": "dummy"},
     {"lr_scheduler": "constant_with_warmup"},
     {"ddpo_conf": "ddpo_train"},
+    {"ddpo_conf_inference": "ddpo_inference"},
     {"query_conf" : "query_conf"},
     {"ai_encoder_conf" : "ai_encoder_conf"},
     {"human_encoder_conf" : "human_encoder_conf"},
@@ -122,6 +124,7 @@ class TrainerConfig:
     optimizer: Any = MISSING
     lr_scheduler: Any = MISSING
     ddpo_conf: Any = MISSING
+    ddpo_conf_inference: Any = MISSING
     query_conf: Any = MISSING
     debug: DebugConfig = DebugConfig()
     output_dir: str = "outputs"
