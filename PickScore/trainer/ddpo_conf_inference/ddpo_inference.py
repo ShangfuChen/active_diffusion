@@ -5,7 +5,7 @@ import torch
 import ml_collections
 
 EXPERIMENTER_NAME = "hayano"
-CHECKPOINT_DIR = "/data/hayano/model_checkpoints/mountain-0-25-best-seed0"
+CHECKPOINT_DIR = f"/data/{EXPERIMENTER_NAME}/model_checkpoints/mountain-0-25-best-seed0"
 EPOCH = 8
 
 @dataclass
@@ -21,7 +21,7 @@ class DDPOInferenceConfig:
     ckpt_dir: str = f"{CHECKPOINT_DIR}" # root model directory used for latent loading
     epoch: int = EPOCH
     # where to save generated images
-    img_save_dir: str = "/home/hayano/test_image_generation"
+    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/test_image_generation"
 
     # config = ml_collections.ConfigDict()
     n_outer_loops: int = 9 # number of times ddpo train should be called
@@ -95,8 +95,8 @@ class DDPOInferenceConfig:
     # sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    # sample_num_batches_per_epoch: int = 16
-    sample_num_batches_per_epoch: int = 25
+    sample_num_batches_per_epoch: int = 16
+    # sample_num_batches_per_epoch: int = 25
     # sample_num_batches_per_epoch: int = 32
     
     ###### Training ######
