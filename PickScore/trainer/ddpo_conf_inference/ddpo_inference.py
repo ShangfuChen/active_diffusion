@@ -10,7 +10,9 @@ EPOCH = 8
 
 @dataclass
 class DDPOInferenceConfig:
-
+    # random seed for reproducibility.
+    seed: int = 0
+    
     # resume training from a checkpoint. either an exact checkpoint directory (e.g. checkpoint_50), or a directory
     # containing checkpoints, in which case the latest one will be used. `config.use_lora` must be set to the same value
     # as the run that generated the saved checkpoint.
@@ -21,7 +23,7 @@ class DDPOInferenceConfig:
     ckpt_dir: str = f"{CHECKPOINT_DIR}" # root model directory used for latent loading
     epoch: int = EPOCH
     # where to save generated images
-    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/test_image_generation"
+    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/evaluation_image/mountains-0-25-best-seed0-epoch8"
 
     # config = ml_collections.ConfigDict()
     n_outer_loops: int = 9 # number of times ddpo train should be called
@@ -49,9 +51,6 @@ class DDPOInferenceConfig:
     best_latent_ratio: float = 0.25
     latent_noise: float = 0.1
 
-
-    # random seed for reproducibility.
-    seed: int = 0
     # top-level logging directory for checkpoint saving.
     logdir: str = f"/data/{EXPERIMENTER_NAME}/model_checkpoints"
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
@@ -96,7 +95,7 @@ class DDPOInferenceConfig:
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
     # sample_num_batches_per_epoch: int = 16
-    sample_num_batches_per_epoch: int = 250
+    sample_num_batches_per_epoch: int = 125
     # sample_num_batches_per_epoch: int = 25
     # sample_num_batches_per_epoch: int = 32
     
