@@ -12,18 +12,19 @@ EPOCH = 8
 class DDPOInferenceConfig:
     # random seed for reproducibility.
     seed: int = 0
-    
+     
     # resume training from a checkpoint. either an exact checkpoint directory (e.g. checkpoint_50), or a directory
     # containing checkpoints, in which case the latest one will be used. `config.use_lora` must be set to the same value
     # as the run that generated the saved checkpoint.
     # resume_from: str = "logs/ddim_1_hand/checkpoints/checkpoint_0"
     # resume_from: str = "" # use this if NOT loading model checkpoint
-    resume_from: str = f"{CHECKPOINT_DIR}/checkpoints/checkpoint_{EPOCH}" # use this when loading checkpoint
+    resume_from: str = f"{CHECKPOINT_DIR}/checkpoints/checkpoint_{EPOCH - 1}" # use this when loading checkpoint
 
     ckpt_dir: str = f"{CHECKPOINT_DIR}" # root model directory used for latent loading
-    epoch: int = EPOCH
-    # where to save generated images
-    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/evaluation_image/mountains-0-25-best-seed0-epoch8"
+    epoch: int = EPOCH - 1
+    # where to save generate dimages
+    # img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/evaluation_image/mountains-0-25-best-seed0-epoch8"
+    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/sd_pretrained/cyberpunk-cat"
 
     # config = ml_collections.ConfigDict()
     n_outer_loops: int = 9 # number of times ddpo train should be called
@@ -33,8 +34,8 @@ class DDPOInferenceConfig:
 
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
-    run_name: str = "mountain-0-25-best-seed0"
-    # run_name: str = "debug"
+    # run_name: str = "mountain-0-25-best-seed0"
+    run_name: str = "debug"
 
     reward_mode: str = "similarity-to-best-sample"
     # reward_mode: str = "similarity-to-all-positive"
@@ -47,7 +48,7 @@ class DDPOInferenceConfig:
     # sample_latent_type: str = "good_without_noise"
     sample_latent_type: str = "best_and_good_fixed_noise"
     sample_from_best_latent: bool = False # whether to sample from best latent
-    sample_from_all_good_latents: bool = True # if true, use best + good latents
+    sample_from_all_good_latents: bool = False # if true, use best + good latents
     best_latent_ratio: float = 0.25
     latent_noise: float = 0.1
 
@@ -94,8 +95,8 @@ class DDPOInferenceConfig:
     sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    # sample_num_batches_per_epoch: int = 16
-    sample_num_batches_per_epoch: int = 125
+    sample_num_batches_per_epoch: int = 16
+    # sample_num_batches_per_epoch: int = 125
     # sample_num_batches_per_epoch: int = 25
     # sample_num_batches_per_epoch: int = 32
     
@@ -148,9 +149,9 @@ class DDPOInferenceConfig:
     # prompt_fn: str = "blue_rose"
     # prompt_fn: str = "narcissus"
     # prompt_fn: str = "black_cat"
-    prompt_fn: str = "mountains"
+    # prompt_fn: str = "mountains"
     # prompt_fn: str = "aesthetic_dog"
-    # prompt_fn: str = "cyberpunk_cat"
+    prompt_fn: str = "cyberpunk_cat"
     # prompt_fn: str = "bouquet"
     # prompt_fn: str = "street"
     # prompt_fn: str = "hand"

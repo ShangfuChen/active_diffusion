@@ -60,11 +60,11 @@ def main(cfg: TrainerConfig) -> None:
         ckpt_epoch = cfg.ddpo_conf_inference.epoch
         if cfg.ddpo_conf_inference.sample_from_best_latent:
             # we only sample from the best latent
-            high_reward_latents = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"best_{ckpt_epoch-1}.pt"))
+            high_reward_latents = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"best_{ckpt_epoch}.pt"))
         elif cfg.ddpo_conf_inference.sample_from_all_good_latents:
             # load best and good latents
-            best_latent = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"best_{ckpt_epoch-1}.pt"))
-            pos_latents = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"positives_{ckpt_epoch-1}.pt"))
+            best_latent = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"best_{ckpt_epoch}.pt"))
+            pos_latents = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"positives_{ckpt_epoch}.pt"))
             high_reward_latents = torch.cat([pos_latents, best_latent], dim=0)        
 
     samples, all_latents, prompts, ai_rewards = ddpo_trainer.sample(
