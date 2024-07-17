@@ -26,6 +26,7 @@ class FeedbackTypes(IntEnum):
     SCORE_ONE = 1
     SCORE_ONE_WRT_BEST = 2
     POSITIVE_INDICES = 3
+    POSITIVE_AND_BEST_INDICES = 4
 
 class OutputTypes(IntEnum):
     BINARY_PREFERENCE = 0
@@ -48,10 +49,8 @@ DEFAULT_FEEDBACK_SETTINGS = {
         "n_feedbacks" : 1,
         "score_range" : (-5, 5),
     },
-    FeedbackTypes.POSITIVE_INDICES : {
-    
-    },
-
+    FeedbackTypes.POSITIVE_INDICES : {},
+    FeedbackTypes.POSITIVE_AND_BEST_INDICES : {},
 }
 
 FEEDBACK_TYPE_TO_ID = {
@@ -59,6 +58,7 @@ FEEDBACK_TYPE_TO_ID = {
     "score-one" : FeedbackTypes.SCORE_ONE,
     "score-one-wrt-best" : FeedbackTypes.SCORE_ONE_WRT_BEST,
     "positive-indices" : FeedbackTypes.POSITIVE_INDICES,
+    "positive-and-best-indices" : FeedbackTypes.POSITIVE_AND_BEST_INDICES,
 }
 
 class FeedbackInterface:
@@ -221,6 +221,11 @@ class FeedbackInterface:
 
         elif feedback_type == FeedbackTypes.POSITIVE_INDICES:
             feedback_args["output_type"] = OutputTypes.POSITIVE_INDICES
+            feedback_args["valid_options"] = None
+            feedback_args["min_n_inputs"] = 1 # TODO - magic number. specify through hydra config?
+        
+        elif feedback_type == FeedbackTypes.POSITIVE_AND_BEST_INDICES:
+            feedback_args["output_type"] = OutputTypes.POSITIVE_AND_BEST_INDICES
             feedback_args["valid_options"] = None
             feedback_args["min_n_inputs"] = 1 # TODO - magic number. specify through hydra config?
 
@@ -509,7 +514,7 @@ class AIFeedbackInterface(FeedbackInterface):
 
         return feedbacks # in case getting values directly is more convenient than saving as datafile
       
-    
+
 
 class HumanFeedbackInterface(FeedbackInterface):
     """
@@ -574,6 +579,7 @@ class HumanFeedbackInterface(FeedbackInterface):
             except: 
                 input_str = input(f"Input is not an integer. Enter a number from {valid_options[0]} to {valid_options[-1]}.")
             if input_int in valid_options:
+                print("Got input:", input_int)
                 return input_int
             input_str = input(f"Enter a number from {valid_options[0]} to {valid_options[-1]}.")
 
@@ -662,8 +668,35 @@ class HumanFeedbackInterface(FeedbackInterface):
             return self._query_batch_score_one_wrt_best(prompts, image_batch, query_indices, **kwargs)
         elif self.feedback_type == FeedbackTypes.POSITIVE_INDICES:
             return self._query_batch_n_pick_m(prompts, image_batch, query_indices, **kwargs)
+        elif self.feedback_type == FeedbackTypes.POSITIVE_AND_BEST_INDICES:
+            return self._query_batch_n_pick_m_with_best(prompts, image_batch, query_indices, **kwargs)
 
     def _query_batch_n_pick_m(self, prompts, image_batch, query_indices, **kwargs):
+        """
+        query batch when feedback type is n pick m
+        """
+        image_batch = image_batch[query_indices]
+        prompts = self._process_prompts(prompts=prompts)
+        pil_images = [to_pil_image(image_batch[i]) for i in range(image_batch.shape[0])]
+        
+        # save query image
+        self._save_query_image(
+            images=pil_images,
+            prompt="Choose the best image",
+            img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
+            custom_image_size=(4096,2048),
+        )
+        
+        # get feedback
+        valid_options = np.arange(1, image_batch.shape[0] + 1)
+        positive_indices = self._get_feedback(valid_options=valid_options) - 1
+        negative_indices = np.setdiff1d(valid_options - 1, positive_indices)
+
+        best_image_index = None
+
+        return best_image_index, positive_indices, negative_indices
+
+    def _query_batch_n_pick_m_with_best(self, prompts, image_batch, query_indices, **kwargs):
         """
         query batch when feedback type is n pick m
         """
@@ -920,4 +953,418 @@ class HumanFeedbackInterface(FeedbackInterface):
 
         self.is_first_batch = False
         return feedbacks # in case getting values directly is more convenient than saving as datafile
+
+
+
+
+# class HumanFeedbackInterface(FeedbackInterface):
+#     """
+#     Collect preference from a real human evaluator
+#     """
+#     def __init__(
+#         self,
+#         feedback_type="pick-one",
+#         query_image_size=(2048,512),
+#         run_name="",
+#         **kwargs,
+#     ):
+#         """
+#         Args:
+#             feedback_type (int) : type of feedback to use
+#             query_image_size (2-tuple of ints) : size of image to display when querying humans
+#             kwargs : optional arguments for feedback setting
+#                 n_options (int) : number of images to present in a single query (defaults to 2)
+#                 n_feedbacks (int) : number of feedbacks user must provide per query (defaults to 1)
+#         """
+#         super().__init__(
+#             feedback_type=feedback_type,
+#             query_image_size=query_image_size,
+#             **kwargs,
+#         )
+
+#         # initialize dictionary to keep track of images most recently labeled with each score
+#         self.reference_images = {} # imgs are stored as PIL Images
+#         if self.feedback_type == FeedbackTypes.SCORE_ONE:
+#             # score_options = np.arange(self.feedback_args["score_range"][0], self.feedback_args["score_range"][1]+1)
+#             self.reference_images = {score : None for score in self.feedback_args["valid_options"]}
+
+#         # keep track of the best image so far
+#         self.best_score = 0
+#         self.best_image = None
+
+#         # whether to keep track of best image
+#         self.use_best_image = kwargs["use_best_image"] if "use_best_image" in kwargs.keys() else False
+
+#         # run name to save separate query images for each run
+#         self.run_name = run_name
+
+#     def _get_feedback(self, valid_options=None, **kwargs):
+#         if valid_options is None:
+#             valid_options = self.feedback_args["valid_options"]
+
+#         if self.feedback_args["output_type"] == OutputTypes.BINARY_PREFERENCE:
+#             return self._get_pick_one_labels_feedback(valid_options=valid_options)
+#         elif self.feedback_args["output_type"] == OutputTypes.SCORE:
+#             return self._get_raw_feedback(valid_options=valid_options)
+#         elif self.feedback_args["output_type"] == OutputTypes.SCORE_WRT_BEST:
+#             return self._get_score_wrt_best(valid_options=valid_options)
+#         elif self.feedback_args["output_type"] == OutputTypes.POSITIVE_INDICES:
+#             return self._get_positive_indices_feedback(valid_options=valid_options)
+
+#     def _wait_for_feedback(self, valid_options):
+#         input_str = "-999"
+
+#         while True:
+#             try:
+#                 input_int = int(input_str)
+#             except: 
+#                 input_str = input(f"Input is not an integer. Enter a number from {valid_options[0]} to {valid_options[-1]}.")
+#             if input_int in valid_options:
+#                 print("Got input:", input_int)
+#                 return input_int
+#             input_str = input(f"Enter a number from {valid_options[0]} to {valid_options[-1]}.")
+
+#     def _get_raw_feedback(self, valid_options):
+#         # get human input
+#         input_int = self._wait_for_feedback(valid_options)
+
+#         # Get final output
+#         return input_int
+
+#     def _get_pick_one_labels_feedback(self, valid_options):
+#         # get human input
+#         input_int = self._wait_for_feedback(valid_options)
+
+#         # Get final output 
+#         if self.feedback_args["output_type"] == OutputTypes.BINARY_PREFERENCE:
+#             # "binary preference" output type returns labels for images 0 and 1
+#             if input_int == 1:
+#                 label0 = 1
+#                 label1 = 0
+#             elif input_int == 2:
+#                 label0 = 0
+#                 label1 = 1
+#             elif input_int == 0:
+#                 label0 = 0.5
+#                 label1 = 0.5
+#             return (label0, label1)
+        
+#         else:
+#             raise Exception("binary preference is the only pick-one feedback type currently supported")
+
+#     def _get_score_wrt_best(self, valid_options):
+#         # get human input
+#         input_int = self._wait_for_feedback(valid_options)
+
+#         # Get final output
+#         return self.best_score + input_int
+    
+#     def _get_positive_indices_feedback(self, valid_options):
+#         # get human input (list of positive indices)
+#         input_str = "none"
+
+#         # cast valid indices to list of ints
+#         if not isinstance(valid_options, list):
+#             valid_options = valid_options.tolist()
+#         valid_options = [int(i) for i in valid_options]
+
+#         # wait for valid feedback
+#         while True:
+#             input_str = input("Enter a list of integers (space-separated) for images comparable or better than the current best image")
+#             input_indices = input_str.split()
+
+#             try: # confirm inputs are a list of ints
+#                 input_ints = [int(idx) for idx in input_indices]
+#             except:
+#                 print("Got non-integer input(s). Input must be a speace separated list of ints")
+#                 continue
+
+#             n_chosen = len(input_ints)
+#             n_not_chosen = len(valid_options) - len(input_ints)
+#             if n_chosen < self.feedback_args["min_n_inputs"] or n_not_chosen < self.feedback_args["min_n_inputs"]:
+#                 print(f"Number of chosen and unchosen indices must both be at least {self.feedback_args['min_n_inputs']}. Got chosen ({n_chosen}), not chosen ({n_not_chosen})")
+#                 continue
+          
+#             # make sure all provided indices are in the lit of valid options
+#             if set(input_ints).issubset(valid_options):
+#                 return np.array(input_ints)
+#             else:
+#                 print("One or more of the input indices are invalid. Indices must be one of", valid_options)
+
+#     def query_batch(self, prompts, image_batch, query_indices, **kwargs):
+#         """
+#         Version of query() that takes a batch of images in the form of tensor (B x C x H x W),
+#         and a list of index-pairs to query
+
+#         Args:
+#             prompts (list(str)) : list of prompts corresponding to images in image_batch
+#             image_batch (Tensor) : (B x C x H x W) tensor of images
+#             query_indices (list(list(int))) : list of queries where each entry is [idx0, idx1] of images to query
+#         """
+#         if self.feedback_type == FeedbackTypes.SCORE_ONE:
+#             return self._query_batch_score_one(prompts, image_batch, query_indices, **kwargs)
+#         elif self.feedback_type == FeedbackTypes.PICK_ONE:
+#             return self._query_batch_binary_pref(prompts, image_batch, query_indices, **kwargs)
+#         elif self.feedback_type == FeedbackTypes.SCORE_ONE_WRT_BEST:
+#             return self._query_batch_score_one_wrt_best(prompts, image_batch, query_indices, **kwargs)
+#         elif self.feedback_type == FeedbackTypes.POSITIVE_INDICES:
+#             return self._query_batch_n_pick_m(prompts, image_batch, query_indices, **kwargs)
+
+#     def _query_batch_n_pick_m(self, prompts, image_batch, query_indices, **kwargs):
+#         """
+#         query batch when feedback type is n pick m
+#         """
+#         image_batch = image_batch[query_indices]
+#         prompts = self._process_prompts(prompts=prompts)
+#         pil_images = [to_pil_image(image_batch[i]) for i in range(image_batch.shape[0])]
+        
+#         # save query image
+#         self._save_query_image(
+#             images=pil_images,
+#             prompt="Choose the best image",
+#             img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
+#             custom_image_size=(4096,2048),
+#         )
+#         # if this is the first query, have evaluator choose the first best image
+#         if self.is_first_batch:
+#             print("Select the best image in query_image.png")
+#             best_image_index = self._get_raw_feedback(valid_options=np.arange(1, len(pil_images)+1)) - 1
+#             self.best_image = pil_images[best_image_index]
+     
+#             # save the best image
+#             self._save_query_image(
+#                 images=self.best_image,
+#                 prompt="Best image so far",
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
+#                 custom_image_size=(512,512),
+#             )
+
+#         # get feedback
+#         valid_options = np.arange(1, image_batch.shape[0] + 1)
+#         positive_indices = self._get_feedback(valid_options=valid_options) - 1
+#         if self.is_first_batch and best_image_index not in positive_indices:
+#             positive_indices = np.append(positive_indices, best_image_index)
+#         negative_indices = np.setdiff1d(valid_options - 1, positive_indices)
+
+#         # update best image?
+#         if not self.is_first_batch:
+#             best_image_candidates = [pil_images[i] for i in positive_indices] + [self.best_image]
+#             self._save_query_image(
+#                 images=best_image_candidates,
+#                 prompt="Choose the best image",
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_best_image_candidates.png",
+#                 custom_image_size=(1024,1024),
+#             )
+#             best_image_index = self._get_raw_feedback(valid_options=np.arange(1, len(best_image_candidates)+1)) - 1
+#             # update best image if anything other than the current best is chosen
+#             if not best_image_index == len(best_image_candidates) - 1:
+#                 self.best_image = best_image_candidates[best_image_index]
+
+#                 # save the best image
+#                 self._save_query_image(
+#                     images=self.best_image,
+#                     prompt="Best image so far",
+#                     img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
+#                     custom_image_size=(512,512),
+#                 )
+#             else:
+#                 # if best image is not updated, don't return index
+#                 best_image_index = None
+#         self.is_first_batch = False
+
+#         return best_image_index, positive_indices, negative_indices
+
+
+#     def _query_batch_binary_pref(self, prompts, image_batch, query_indices, **kwargs):
+#         """
+#         query batch when feedback type is binary preference
+#         """                    
+#         prompts = self._process_prompts(prompts=prompts)
+#         feedbacks = []
+#         for query, prompt in zip(query_indices, prompts):
+#             # Get query images in PIL format 
+#             if not isinstance(query, Iterable):
+#                 query = [query]
+#             images = [to_pil_image(image_batch[idx]) for idx in query]
+
+#             # Save query image for user
+#             self._save_query_image(
+#                 images=images,
+#                 prompt=prompt,
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
+#             )
+#             # Get feedback
+#             feedback = self._get_feedback(prompt=prompt, images=images)
+#             feedbacks.append(feedback)
+
+#             # Append query + feedback to self.df
+#             self._store_feedback(feedback=feedback, images=images, prompt=prompt)
+
+#         return feedbacks # in case getting values directly is more convenient than saving as datafile
+    
+#     def _query_batch_score_one(self, prompts, image_batch, query_indices, **kwargs):
+#         prompts = self._process_prompts(prompts=prompts)
+#         feedbacks = []
+#         pil_images = []
+
+#         for query, prompt in zip(query_indices, prompts):
+#             # Get query images in PIL format 
+#             if not isinstance(query, Iterable):
+#                 query = [query]
+#             images = [to_pil_image(image_batch[idx]) for idx in query]
+
+#             # Save query image for user
+#             self._save_query_image(
+#                 images=images,
+#                 prompt=prompt,
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
+#             )
+
+#             # save reference image (most recent image given each score)
+#             self._save_query_image(
+#                 images=list(self.reference_images.values()),
+#                 prompt="Reference images",
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_reference_image.png",
+#             )
+#             pil_images += images
+
+#             # Get feedback
+#             print("Best score so far is: ", self.best_score)
+#             feedback = self._get_feedback(prompt=prompt, images=images)
+#             feedbacks.append(feedback)
+
+#             # Append query + feedback to self.df
+#             self._store_feedback(feedback=feedback, images=images, prompt=prompt)
+
+#             # update reference image and best score 
+#             self.reference_images[feedback] = images[0]
+#             # update best score so far
+#             if feedback > self.best_score:
+#                 self.best_score = feedback
+
+#         if self.use_best_image:
+#             # get images with best score so far and save ui image
+#             best_score_indices = np.where(np.array(feedbacks) == self.best_score)[0]
+#             best_images = [pil_images[i] for i in best_score_indices]
+#             if len(best_images) == 1:
+#                 # if there is only one candidate, no need to query human
+#                 self.best_image = best_images[0]
+#             else:
+#                 # otherwise, save query image to let human choose which one is best
+#                 if self.best_image is not None:
+#                     # if best image has already been assigned, include this to the best image candidates
+#                     best_images += [self.best_image]
+#                 self._save_query_image(
+#                     images=best_images,
+#                     prompt="Best image candidates",
+#                     img_save_path=f"real_human_ui_images/{self.run_name}_best_image_candidates.png",
+#                 )
+#                 best_image_index = self._get_raw_feedback(valid_options=np.arange(len(best_images))+1)
+#                 self.best_image = best_images[best_image_index - 1]
+
+#             # save the best image so far
+#             self._save_query_image(
+#                 images=self.best_image,
+#                 prompt="Best image so far",
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
+#             )
+
+#         return feedbacks # in case getting values directly is more convenient than saving as datafile
+
+#     def _query_batch_score_one_wrt_best(self, prompts, image_batch, query_indices, **kwargs):
+#         prompts = self._process_prompts(prompts=prompts)
+#         feedbacks = []
+#         pil_images = []
+
+#         # if this is the first query, have evaluator choose the first best image
+#         if self.is_first_batch:
+#             print("Select the best image in best_image_candidates.png")
+#             pil_images = [to_pil_image(image_batch[idx]) for idx in query_indices]
+#             self._save_query_image(
+#                 images=pil_images,
+#                 prompt="Choose the best image",
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_best_image_candidates.png",
+#             )
+#             best_image_index = self._get_raw_feedback(valid_options=np.arange(1, len(pil_images)+1)) - 1
+#             self.best_image = pil_images[best_image_index]
+#             self.best_score = 5 # TODO - magic number
+
+#             # save the best image so far
+#             self._save_query_image(
+#                 images=self.best_image,
+#                 prompt="Best image so far",
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
+#             )
+        
+#         print("Start collecting feedback")
+#         for query, prompt in zip(query_indices, prompts):
+#             print("query", query)
+#             # Get query images in PIL format 
+#             if not isinstance(query, Iterable):
+#                 query = [query]
+#             images = [to_pil_image(image_batch[idx]) for idx in query]
+#             # Save query image for user
+#             self._save_query_image(
+#                 images=images,
+#                 prompt=prompt,
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_query_image.png",
+#             )
+
+#             # TODO - this mode currently does not support reference image saving
+#             # save reference image (most recent image given each score)
+#             # self._save_query_image(
+#             #     images=list(self.reference_images.values()),
+#             #     prompt="Reference images",
+#             #     img_save_path="real_human_ui_images/reference_image.png",
+#             # )
+#             pil_images += images
+
+#             # Get feedback
+#             if self.is_first_batch and query[0] == best_image_index:
+#                 feedback = 5 # TODO - magic number
+#                 self.best_score = feedback 
+#             else:
+#                 print("Best score so far is: ", self.best_score)
+#                 feedback = self._get_feedback(prompt=prompt, images=images)
+            
+#             feedbacks.append(feedback)
+
+#             # Append query + feedback to self.df
+#             self._store_feedback(feedback=feedback, images=images, prompt=prompt)
+
+#             # update reference image and best score 
+#             # self.reference_images[feedback] = images[0]
+#             # update best score so far
+#             if feedback > self.best_score:
+#                 self.best_score = feedback
+
+#         if self.use_best_image and not self.is_first_batch:
+#             print("Choose the best image in best_image_candidates.png")
+#             # get images with best score so far and save ui image
+#             best_score_indices = np.where(np.array(feedbacks) == self.best_score)[0]
+#             best_images = [pil_images[i] for i in best_score_indices]
+#             if self.best_image is not None:
+#                 best_images += [self.best_image]
+#             if len(best_images) == 1:
+#                 # if there is only one candidate, no need to query human
+#                 self.best_image = best_images[0]
+#             else:
+#                 # otherwise, save query image to let human choose which one is best
+#                 self._save_query_image(
+#                     images=best_images,
+#                     prompt="Best image candidates",
+#                     img_save_path=f"real_human_ui_images/{self.run_name}_best_image_candidates.png",
+#                 )
+#                 best_image_index = self._get_raw_feedback(valid_options=np.arange(len(best_images))+1)
+#                 self.best_image = best_images[best_image_index - 1]
+
+#             # save the best image so far
+#             self._save_query_image(
+#                 images=self.best_image,
+#                 prompt="Best image so far",
+#                 img_save_path=f"real_human_ui_images/{self.run_name}_best_image.png",
+#             )
+
+#         self.is_first_batch = False
+#         return feedbacks # in case getting values directly is more convenient than saving as datafile
 
