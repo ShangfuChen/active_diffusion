@@ -22,7 +22,7 @@ from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne, Co
 from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
 from rl4dgm.utils.query_generator import EvaluationQueryGenerator
 from rl4dgm.models.mydatasets import TripletDatasetWithPositiveNegativeBest, HumanDatasetSimilarity
-from rl4dgm.reward_predictor_trainers.encoder_trainers import TripletEncoderTrainer
+from rl4dgm.reward_predictor_trainers.encoder_trainers import EntropyEncoderTrainer
 
 logger = get_logger(__name__)
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
@@ -92,7 +92,7 @@ def main(cfg: TrainerConfig) -> None:
     print("...done\n")
 
     print("Initializing human encoder trainer...")
-    human_encoder_trainer = TripletEncoderTrainer(
+    human_encoder_trainer = EntropyEncoderTrainer(
         config_dict=dict(cfg.human_encoder_conf),
         seed=cfg.ddpo_conf.seed,
         trainset=None,
@@ -261,8 +261,8 @@ def main(cfg: TrainerConfig) -> None:
         n_total_human_feedback += query_indices.shape[0]    
         
         print("n data", human_dataset.n_data)
-        print(f"positive indices ({human_dataset.positive_indices.shape[0]}) : {human_dataset.positive_indices}")
-        print(f"negative indices ({human_dataset.negative_indices.shape[0]}) : {human_dataset.negative_indices}")
+        print("positive indices", human_dataset.positive_indices)
+        print("negative indices", human_dataset.negative_indices)
 
         ############################ If we have enough human data to train on ############################
         if human_dataset.n_data >= n_human_data_for_training:

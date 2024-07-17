@@ -66,6 +66,8 @@ def main(cfg: TrainerConfig) -> None:
             best_latent = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"best_{ckpt_epoch}.pt"))
             pos_latents = torch.load(os.path.join(cfg.ddpo_conf_inference.ckpt_dir, "latents", f"positives_{ckpt_epoch}.pt"))
             high_reward_latents = torch.cat([pos_latents, best_latent], dim=0)        
+        else:
+            high_reward_latents = None
 
     samples, all_latents, prompts, ai_rewards = ddpo_trainer.sample(
         logger=logger,

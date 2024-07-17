@@ -24,7 +24,7 @@ class DDPOInferenceConfig:
     epoch: int = EPOCH - 1
     # where to save generate dimages
     # img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/evaluation_image/mountains-0-25-best-seed0-epoch8"
-    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/sd_pretrained/cyberpunk-cat"
+    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/sd_pretrained/blue-rose"
 
     # config = ml_collections.ConfigDict()
     n_outer_loops: int = 9 # number of times ddpo train should be called
@@ -95,10 +95,10 @@ class DDPOInferenceConfig:
     sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    sample_num_batches_per_epoch: int = 16
+    # sample_num_batches_per_epoch: int = 16
     # sample_num_batches_per_epoch: int = 125
     # sample_num_batches_per_epoch: int = 25
-    # sample_num_batches_per_epoch: int = 32
+    sample_num_batches_per_epoch: int = 32
     
     ###### Training ######
     # config.train = train = ml_collections.ConfigDict()
@@ -146,12 +146,12 @@ class DDPOInferenceConfig:
     # prompt_fn: str = "cute_animals"
 
     ####### Prompts for Our Tasks ########
-    # prompt_fn: str = "blue_rose"
+    prompt_fn: str = "blue_rose"
     # prompt_fn: str = "narcissus"
     # prompt_fn: str = "black_cat"
     # prompt_fn: str = "mountains"
     # prompt_fn: str = "aesthetic_dog"
-    prompt_fn: str = "cyberpunk_cat"
+    # prompt_fn: str = "cyberpunk_cat"
     # prompt_fn: str = "bouquet"
     # prompt_fn: str = "street"
     # prompt_fn: str = "hand"
