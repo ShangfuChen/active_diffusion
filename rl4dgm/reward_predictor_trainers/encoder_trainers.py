@@ -9,7 +9,7 @@ from torch import nn
 from torch.utils.data import DataLoader
 from accelerate import Accelerator
 
-from rl4dgm.models.mydatasets import TripletDataset, DoubleTripletDataset
+from rl4dgm.models.mydatasets import XentropyDataset, TripletDataset, DoubleTripletDataset
 from rl4dgm.models.my_models import LinearModel
 
 
@@ -23,8 +23,8 @@ class EntropyEncoderTrainer:
             accelerator: Accelerator,
             seed,
             save_dir,
-            trainset: TripletDataset = None,
-            testset: TripletDataset = None, 
+            trainset: XentropyDataset = None,
+            testset: XentropyDataset = None, 
         ):
         """
         Args:
@@ -58,10 +58,10 @@ class EntropyEncoderTrainer:
         # hidden_dim is ListConfig type if speficied in hydra config. Convert to list so it can be dumped to json
         config_dict["hidden_dims"] = [dim for dim in config_dict["hidden_dims"]]
 
-        print("Initializing TripletEncoderTrainer with following configs\n", config_dict)
+        print("Initializing EntropyEncoderTrainer with following configs\n", config_dict)
         with open(os.path.join(save_dir, "train_config.json"), "w") as f:
             json.dump(config_dict, f)
-            print("saved TripletEncoderTrainer config to", os.path.join(save_dir, "train_config.json"))
+            print("saved EntropyEncoderTrainer config to", os.path.join(save_dir, "train_config.json"))
                 
         self.seed = seed
         self.generator = torch.Generator()
@@ -94,7 +94,6 @@ class EntropyEncoderTrainer:
         self.criterion = nn.BCELoss().to(self.device)
 
         self.n_total_epochs = 0
-        self.n_total_steps = 0
         self.n_calls_to_train = 0 # how many times the train function has been called
 
         self.start_time = time.time()
@@ -107,8 +106,8 @@ class EntropyEncoderTrainer:
         """
         Update dataset and reinitialize dataloaders
         Args:
-            trainset (TripletDataset)
-            testset (TripletDataset)
+            trainset (XentropyDataset)
+            testset (XentropyDataset)
         """
         if trainset is not None:
             self.trainset = trainset
@@ -134,37 +133,33 @@ class EntropyEncoderTrainer:
         Trains an image encoder using cross entropy loss
         """
         self.n_calls_to_train += 1
-        n_steps = 0
         for epoch in range(self.config["n_epochs"]):
             running_losses = []
             if epoch % 100 == 0:
                 print("EntropyEncoder training epoch", epoch)
-            for step, (anchor_features, _, positive_features, negative_features) in enumerate(self.trainloader):
-                self.optimizer.zero_grad()
-                anchor_out = self.model(anchor_features)
-                positive_out = self.model(positive_features)
-                negative_out = self.model(negative_features)
-                features = torch.cat([anchor_out, positive_out, negative_out])
-                labels = torch.cat([torch.ones(anchor_out.shape[0]),
-                                   torch.ones(positive_out.shape[0]),
-                                   torch.zeros(negative_out.shape[0])]).to(self.device)
-                shuffle_indices = torch.randperm(features.shape[0])
-                features = features[shuffle_indices]
-                labels = labels[shuffle_indices]
+            positive_features, negative_features = self.trainset.return_features()
+            
+            self.optimizer.zero_grad()
+            positive_emb = self.model(positive_features)
+            negative_emb = self.model(negative_features)
+            features = torch.cat([positive_emb, negative_emb])
+            labels = torch.cat([torch.ones(positive_emb.shape[0]),
+                                torch.zeros(negative_emb.shape[0])]).to(self.device)
+            shuffle_indices = torch.randperm(features.shape[0])
+            features = features[shuffle_indices]
+            labels = labels[shuffle_indices]
 
-                loss = self.criterion(torch.sigmoid(features).mean(1), labels)
-                loss.backward()
-                self.optimizer.step()
-                running_losses.append(loss.item())
-                n_steps += 1
+            loss = self.criterion(torch.sigmoid(features).mean(1), labels)
+            loss.backward()
+            self.optimizer.step()
+            running_losses.append(loss.item())
 
-                self.accelerator.log({
-                    f"{self.name}_epoch" : self.n_total_epochs,
-                    f"{self.name}_step" : self.n_total_epochs,
-                    f"{self.name}_loss" : loss.item(),
-                    f"{self.name}_lr" : self.config["lr"],
-                    f"{self.name}_clock_time" : time.time() - self.start_time,
-                })
+            self.accelerator.log({
+                f"{self.name}_epoch" : self.n_total_epochs,
+                f"{self.name}_loss" : loss.item(),
+                f"{self.name}_lr" : self.config["lr"],
+                f"{self.name}_clock_time" : time.time() - self.start_time,
+            })
 
             self.n_total_epochs += 1
             
@@ -268,7 +263,6 @@ class TripletEncoderTrainer:
         )
 
         self.n_total_epochs = 0
-        self.n_total_steps = 0
         self.n_calls_to_train = 0 # how many times the train function has been called
 
         self.start_time = time.time()
@@ -308,12 +302,11 @@ class TripletEncoderTrainer:
         Trains an image encoder using triplet loss
         """
         self.n_calls_to_train += 1
-        n_steps = 0
         for epoch in range(self.config["n_epochs"]):
             running_losses = []
             if epoch % 100 == 0:
                 print("TripletEncoder training epoch", epoch)
-            for step, (anchor_features, _, positive_features, negative_features) in enumerate(self.trainloader):
+            for anchor_features, _, positive_features, negative_features in self.trainloader:
                 self.optimizer.zero_grad()
                 anchor_out = self.model(anchor_features)
                 positive_out = self.model(positive_features)
@@ -323,11 +316,9 @@ class TripletEncoderTrainer:
                 loss.backward()
                 self.optimizer.step()
                 running_losses.append(loss.item())
-                n_steps += 1
 
                 self.accelerator.log({
                     f"{self.name}_epoch" : self.n_total_epochs,
-                    f"{self.name}_step" : self.n_total_epochs,
                     f"{self.name}_loss" : loss.item(),
                     f"{self.name}_lr" : self.config["lr"],
                     f"{self.name}_clock_time" : time.time() - self.start_time,
@@ -349,7 +340,7 @@ class TripletEncoderTrainer:
                 print(f"TripletEncoder evaluation - {dataset_type}set")
                 anchor_positive = []
                 anchor_negative = []
-                for step, (anchor_features, _, positive_features, negative_features) in enumerate(dataloader):
+                for anchor_features, _, positive_features, negative_features in dataloader:
                     # get anchor-positive and anchor-negative distances
                     anchor_out = self.model(anchor_features)
                     positive_out = self.model(positive_features)
@@ -494,7 +485,6 @@ class DoubleTripletEncoderTrainer:
         Trains an image encoder using triplet loss
         """
         self.n_calls_to_train += 1
-        n_steps = 0
         
         for epoch in range(self.config["n_epochs"]):
             self.n_total_epochs += 1
@@ -533,7 +523,6 @@ class DoubleTripletEncoderTrainer:
                 loss.backward()
                 self.optimizer.step()
                 running_losses.append(loss.item())
-                n_steps += 1
                 self.n_total_steps += 1
 
                 self.accelerator.log({

@@ -26,6 +26,47 @@ def get_weighted_sample(weights, k):
     return torch.tensor(indices)
 
 
+class XentropyDataset(Dataset):
+    def __init__(
+        self,
+        features,
+        positive_indices,
+        negative_indices,
+        device,
+        sampling_method="default",
+    ):
+        self.features = features.float().to(device)
+        self.positive_indices = positive_indices
+        self.negative_indices = negative_indices
+
+        self.sampling_method = sampling_method
+        sampling_methods = [
+            "default",
+        ]
+        assert sampling_method in sampling_methods, f"Sampling method must be one of {sampling_methods}. Got {sampling_method}"
+
+    def __len__(self):
+        return self.features.shape[0]
+
+    def __getitem__(self, idx):
+        # given index, return positive and negative samples
+        ##############################################################################################
+        # Sample positive (and negative) samples randomly
+        ##############################################################################################  
+        if self.sampling_method == "default":
+            positive_index = random.choice(self.positive_indices)
+            negative_index = random.choice(self.negative_indices)
+            positive_feature = self.features[positive_index]
+            negative_feature = self.features[negative_index]
+        return positive_feature, negative_feature
+    
+    def return_features(self):
+        # return all positive features and all negative features without sampling indices
+        positive_features = self.features[self.positive_indices]
+        negative_features = self.features[self.negative_indices]
+        return positive_features, negative_features
+
+
 class TripletDatasetWithBestSample(Dataset):
     def __init__(
         self,
