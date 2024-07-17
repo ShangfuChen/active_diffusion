@@ -4,7 +4,7 @@ from typing import Optional
 import torch
 import ml_collections
 
-EXPERIMENTER_NAME = "hayano"
+EXPERIMENTER_NAME = "shangfu"
 
 @dataclass
 class DDPOTrainConfig:
@@ -16,8 +16,8 @@ class DDPOTrainConfig:
 
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
-    run_name: str = "mountain-0-25-best-seed0"
-    # run_name: str = "debug"
+    # run_name: str = "mountain-0-25-best-seed0"
+    run_name: str = "debug"
 
     reward_mode: str = "similarity-to-best-sample"
     # reward_mode: str = "similarity-to-all-positive"
@@ -27,11 +27,11 @@ class DDPOTrainConfig:
     # Sampling methods
     # sample_latent_type: str = "best_with_fixed_noise"
     # sample_latent_type: str = "best_scheduled"
-    # sample_latent_type: str = "good_without_noise"
-    sample_latent_type: str = "best_and_good_fixed_noise"
+    sample_latent_type: str = "good_with_fixed_noise"
+    # sample_latent_type: str = "best_and_good_fixed_noise"
     sample_from_best_latent: bool = False # whether to sample from best latent
     sample_from_all_good_latents: bool = True # if true, use best + good latents
-    best_latent_ratio: float = 0.25
+    best_latent_ratio: float = 0.5 # only for best_and_good_fixed_noise option
     latent_noise: float = 0.1
 
 
@@ -43,7 +43,7 @@ class DDPOTrainConfig:
     # samples.
     num_epochs: int = 100
     # number of epochs between saving model checkpoints. deactivate by setting a negative value
-    save_freq: int = 1
+    save_freq: int = -1
     # number of checkpoints to keep before overwriting old ones.
     num_checkpoint_limit: int = 10
     # mixed precision training. options are "fp16", "bf16", and "no". half-precision speeds up training significantly.
@@ -72,7 +72,7 @@ class DDPOTrainConfig:
     ###### Sampling ######
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    sample_num_steps: int = 50
+    sample_num_steps: int = 20
     # sample_num_steps: int = 5
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
@@ -80,8 +80,8 @@ class DDPOTrainConfig:
     # classifier-free guidance weight. 1.0 is no guidance.
     sample_guidance_scale: float = 5.0
     # batch size (per GPU!) to use for sampling.
-    sample_batch_size: int = 4
-    # sample_batch_size: int = 8
+    # sample_batch_size: int = 4
+    sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
     sample_num_batches_per_epoch: int = 16
@@ -137,12 +137,13 @@ class DDPOTrainConfig:
     # prompt_fn: str = "blue_rose"
     # prompt_fn: str = "narcissus"
     # prompt_fn: str = "black_cat"
-    prompt_fn: str = "mountains"
+    # prompt_fn: str = "mountains"
     # prompt_fn: str = "aesthetic_dog"
     # prompt_fn: str = "cyberpunk_cat"
     # prompt_fn: str = "bouquet"
     # prompt_fn: str = "street"
     # prompt_fn: str = "hand"
+    prompt_fn: str = "unsafe"
 
     # kwargs to pass to the prompt function.
 

@@ -105,6 +105,8 @@ def street():
 def hand():
     return from_file("hand.txt")
 
+def unsafe():
+    return from_file("unsafe.txt")
 
 def nouns_activities(nouns_file, activities_file):
     nouns = _load_lines(nouns_file)
