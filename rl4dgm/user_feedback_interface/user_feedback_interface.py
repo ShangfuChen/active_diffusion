@@ -225,7 +225,7 @@ class FeedbackInterface:
             feedback_args["min_n_inputs"] = 1 # TODO - magic number. specify through hydra config?
         
         elif feedback_type == FeedbackTypes.POSITIVE_AND_BEST_INDICES:
-            feedback_args["output_type"] = OutputTypes.POSITIVE_AND_BEST_INDICES
+            feedback_args["output_type"] = OutputTypes.POSITIVE_INDICES
             feedback_args["valid_options"] = None
             feedback_args["min_n_inputs"] = 1 # TODO - magic number. specify through hydra config?
 
