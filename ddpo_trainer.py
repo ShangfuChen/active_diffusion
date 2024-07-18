@@ -349,13 +349,16 @@ class DDPOTrainer:
                 condition_latents = []
 
                 ### sampled from multiple latents
-                if self.config.sample_latent_type == "good_without_noise":
+                if self.config.sample_latent_type == "good_with_fixed_noise":
                     for i in range(self.config.sample_batch_size):
                         condition_latents.append(high_reward_latents[sample_index].unsqueeze(0))
                         sample_index += 1  # sample index from 0 to N positive samples 
                         if sample_index == high_reward_latents.shape[0]:
                             sample_index = 0
                     condition_latents = torch.cat(condition_latents)
+                    noise = torch.Tensor([self.config.latent_noise]).to(self.accelerator.device)
+                    alpha = torch.sqrt(1-noise*noise).to(self.accelerator.device)   
+                    condition_latents = alpha*condition_latents + noise*torch.randn(condition_latents.shape).to(self.accelerator.device)
                 
                 ### sampled from interpolated latents
                 elif self.config.sample_latent_type == "interpolate_good":
