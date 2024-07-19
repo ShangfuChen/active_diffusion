@@ -22,7 +22,7 @@ from rl4dgm.user_feedback_interface.preference_functions import ColorPickOne, Co
 from rl4dgm.user_feedback_interface.user_feedback_interface import HumanFeedbackInterface, AIFeedbackInterface
 from rl4dgm.utils.query_generator import EvaluationQueryGenerator
 from rl4dgm.models.mydatasets import TripletDatasetWithPositiveNegativeBest, HumanDatasetSimilarity
-from rl4dgm.reward_predictor_trainers.encoder_trainers import TripletEncoderTrainer
+from rl4dgm.reward_predictor_trainers.encoder_trainers import TripletEncoderTrainer, RepresentationTrainer
 
 logger = get_logger(__name__)
 os.environ["CUBLAS_WORKSPACE_CONFIG"] = ":16:8"
@@ -38,7 +38,7 @@ def main(cfg: TrainerConfig) -> None:
     print("-"*50)
 
     # create directories to save sampled images
-    img_save_dir = os.path.join("/home/hayano/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
+    img_save_dir = os.path.join("/home/shangfu/sampled_images", cfg.ddpo_conf.run_name, datetime.datetime.now().strftime("%Y.%m.%d_%H.%M.%S"))
     if not os.path.exists(img_save_dir):
         os.makedirs(img_save_dir, exist_ok=False)
     
@@ -92,7 +92,8 @@ def main(cfg: TrainerConfig) -> None:
     print("...done\n")
 
     print("Initializing human encoder trainer...")
-    human_encoder_trainer = TripletEncoderTrainer(
+    # human_encoder_trainer = TripletEncoderTrainer(
+    human_encoder_trainer = RepresentationTrainer(
         config_dict=dict(cfg.human_encoder_conf),
         seed=cfg.ddpo_conf.seed,
         trainset=None,
@@ -116,18 +117,20 @@ def main(cfg: TrainerConfig) -> None:
 
     if cfg.query_conf.feedback_agent == "human":
         feedback_interface = HumanFeedbackInterface(
-            feedback_type="positive-indices",
+            feedback_type=cfg.query_conf.feedback_type,
             run_name=cfg.ddpo_conf.run_name,
         )
     elif cfg.query_conf.feedback_agent == "ai":
         feedback_interface = AIFeedbackInterface(
-            feedback_type="score-one",
+            feedback_type=cfg.query_conf.feedback_type,
             preference_function=PickScore,
         )
     # setup query config
     # random query is the only supported query method now
     if cfg.query_conf.query_type == "random":
         query_kwargs = {"n_queries" : cfg.query_conf.n_feedback_per_query}
+    elif cfg.query_conf.query_type == "all":
+        query_kwargs = {}
     
     ############################################################
     # Initialize human dataset to accumulate
