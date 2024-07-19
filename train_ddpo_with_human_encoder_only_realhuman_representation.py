@@ -199,7 +199,7 @@ def main(cfg: TrainerConfig) -> None:
         if best_sample_latent is not None:
             with torch.no_grad():
                 human_encodings = human_encoder_trainer.model(sd_features)
-                best_sample_encoding = human_encoder_trainer.model(best_sample_latent)
+                best_sample_encoding = human_encoder_trainer.model(best_sample_latent).squeeze()
                 predicted_cossim = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
 
         ############################################################
@@ -297,7 +297,7 @@ def main(cfg: TrainerConfig) -> None:
         with torch.no_grad():
             human_encodings = human_encoder_trainer.model(sd_features)
             best_sample_encoding_from_prev_encoder = best_sample_encoding
-            best_sample_encoding = human_encoder_trainer.model(best_sample_latent)
+            best_sample_encoding = human_encoder_trainer.model(best_sample_latent).squeeze()
             if best_sample_encoding_from_prev_encoder is not None and not is_best_image_updated:
                 best_to_best_cossim_cur_and_prev_encoder = torch.nn.functional.cosine_similarity(best_sample_encoding, best_sample_encoding_from_prev_encoder, dim=0).item()
                 best_to_best_cossim_cur_and_prev_encoder = (best_to_best_cossim_cur_and_prev_encoder + 1) / 2
