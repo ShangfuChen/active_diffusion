@@ -12,7 +12,7 @@ import numpy as np
 class CNNModel(nn.Module):
     def __init__(
             self,
-            channels=8,
+            channels=4,
             size=64,
             device=None,
             model_initialization_weight:float=None,
@@ -23,27 +23,29 @@ class CNNModel(nn.Module):
         """
         super(CNNModel, self).__init__()
 
-        # First convolutional layer
-        self.conv1 = nn.Conv2d(in_channels=channels, out_channels=channels*2, kernel_size=3, stride=1, padding=1)
-        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
-        
-        # Second convolutional layer
-        self.conv2 = nn.Conv2d(in_channels=channels*2, out_channels=channels*4, kernel_size=3, stride=1, padding=1)
-        
-        # Third convolutional layer
-        self.conv3 = nn.Conv2d(in_channels=channels*4, out_channels=channels*8, kernel_size=3, stride=1, padding=1)
-        
-        # Fully connected layer
-        self.fc1 = nn.Linear(size * size * channels // 8, 2048) 
-
-        if model_initialization_seed is not None:
-            torch.manual_seed(model_initialization_seed)
-        
         if device is None:
             if torch.cuda.is_available():
                 device = "cuda"
             else:
                 device = "cpu"
+        self.size = size
+        self.channels = channels
+        # First convolutional layer
+        self.conv1 = nn.Conv2d(in_channels=channels, out_channels=channels*2, kernel_size=3, stride=1, padding=1).to(device)
+        self.pool = nn.MaxPool2d(kernel_size=2, stride=2, padding=0)
+        
+        # Second convolutional layer
+        self.conv2 = nn.Conv2d(in_channels=channels*2, out_channels=channels*4, kernel_size=3, stride=1, padding=1).to(device)
+        
+        # Third convolutional layer
+        self.conv3 = nn.Conv2d(in_channels=channels*4, out_channels=channels*8, kernel_size=3, stride=1, padding=1).to(device)
+        
+        # Fully connected layer
+        self.fc1 = nn.Linear(size * size * channels // 8, 4096).to(device)
+
+        if model_initialization_seed is not None:
+            torch.manual_seed(model_initialization_seed)
+
 
         # initialize model weights
         if model_initialization_weight is not None:
@@ -66,7 +68,7 @@ class CNNModel(nn.Module):
         x = self.pool(F.relu(self.conv3(x)))
         
         # Flatten the output from the convolutional layers
-        x = x.view(-1, 64 * 8 * 8)
+        x = x.view(-1, self.size * self.size * self.channels // 8)
         
         # Apply the fully connected layer
         x = F.relu(self.fc1(x))

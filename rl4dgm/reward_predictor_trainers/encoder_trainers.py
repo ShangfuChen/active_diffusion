@@ -76,7 +76,7 @@ class RepresentationTrainer:
         self.accelerator = accelerator
         self.device = accelerator.device
         self.model = CNNModel(
-            channels=8,
+            channels=4,
             size=64,
             device=self.device,
         )
