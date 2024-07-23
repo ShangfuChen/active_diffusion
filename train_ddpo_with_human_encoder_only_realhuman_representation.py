@@ -189,9 +189,9 @@ def main(cfg: TrainerConfig) -> None:
                 high_reward_latents=None,
             )
 
-        sd_features = torch.flatten(all_latents[:,-1,:,:,:], start_dim=1).float()
+        sd_features = all_latents[:,-1,:,:,:].float()
         sd_noises = all_latents[:, 0,:,:,:].float()
-        print("Sampled from SD model and flattened featuers to ", sd_features.shape)
+        print("Sampled from SD model with shape ", sd_features.shape)
 
         ############################################################
         # Compute cosine similarity before training
@@ -199,7 +199,7 @@ def main(cfg: TrainerConfig) -> None:
         if best_sample_latent is not None:
             with torch.no_grad():
                 human_encodings = human_encoder_trainer.model(sd_features)
-                best_sample_encoding = human_encoder_trainer.model(best_sample_latent)
+                best_sample_encoding = human_encoder_trainer.model(best_sample_latent).squeeze()
                 predicted_cossim = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
 
         ############################################################
@@ -253,40 +253,40 @@ def main(cfg: TrainerConfig) -> None:
         ], dim=0)
 
         # add to human dataset
-        human_dataset.add_data(
-            sd_features=sd_features[query_indices],
-            positive_indices=positive_indices,
-            negative_indices=negative_indices,
-        )
-        print(f"Added to human dataset. There are {human_dataset.n_data} data in human dataset")
+        # human_dataset.add_data(
+        #     sd_features=sd_features[query_indices],
+        #     positive_indices=positive_indices,
+        #     negative_indices=negative_indices,
+        # )
+        # print(f"Added to human dataset. There are {human_dataset.n_data} data in human dataset")
     
         # update number of human feedback collected
         n_total_human_feedback += query_indices.shape[0]    
         
-        print("n data", human_dataset.n_data)
-        print(f"positive indices ({human_dataset.positive_indices.shape[0]}) : {human_dataset.positive_indices}")
-        print(f"negative indices ({human_dataset.negative_indices.shape[0]}) : {human_dataset.negative_indices}")
+        print("n data", query_indices.shape[0])
+        print(f"positive indices ({positive_indices.shape[0]}) : {positive_indices}")
+        print(f"negative indices ({negative_indices.shape[0]}) : {negative_indices}")
 
         ############################ If we have enough human data to train on ############################
-        if human_dataset.n_data >= n_human_data_for_training:
-            ############################################################
-            # Train human encoder
-            ############################################################
-            # make a dataset
-            print("\nPreparing dataset for human encoder training")
-            human_encoder_trainset = TripletDatasetWithPositiveNegativeBest(
-                features=human_dataset.sd_features,
-                best_sample_feature=best_sample_latent,
-                device=accelerator.device,
-                positive_indices=human_dataset.positive_indices,
-                negative_indices=human_dataset.negative_indices,
-                sampling_method="default", # TODO add to config
-            )
-            human_encoder_trainer.initialize_dataloaders(trainset=human_encoder_trainset)
-            human_encoder_trainer.train_model()
+        # if human_dataset.n_data >= n_human_data_for_training:
+        ############################################################
+        # Train human encoder
+        ############################################################
+        # make a dataset
+        print("\nPreparing dataset for human encoder training")
+        human_encoder_trainset = TripletDatasetWithPositiveNegativeBest(
+            features=sd_features[query_indices],
+            best_sample_feature=best_sample_latent,
+            device=accelerator.device,
+            positive_indices=positive_indices,
+            negative_indices=negative_indices,
+            sampling_method="default", # TODO add to config
+        )
+        human_encoder_trainer.initialize_dataloaders(trainset=human_encoder_trainset)
+        human_encoder_trainer.train_model()
 
-            # clear the human_dataset
-            human_dataset.clear_data()
+        # clear the human_dataset
+        # human_dataset.clear_data()
 
         ############################ If we have enough human data to train on ############################
 
@@ -297,12 +297,12 @@ def main(cfg: TrainerConfig) -> None:
         with torch.no_grad():
             human_encodings = human_encoder_trainer.model(sd_features)
             best_sample_encoding_from_prev_encoder = best_sample_encoding
-            best_sample_encoding = human_encoder_trainer.model(best_sample_latent)
+            best_sample_encoding = human_encoder_trainer.model(best_sample_latent).squeeze()
             if best_sample_encoding_from_prev_encoder is not None and not is_best_image_updated:
                 best_to_best_cossim_cur_and_prev_encoder = torch.nn.functional.cosine_similarity(best_sample_encoding, best_sample_encoding_from_prev_encoder, dim=0).item()
                 best_to_best_cossim_cur_and_prev_encoder = (best_to_best_cossim_cur_and_prev_encoder + 1) / 2
             if best_sample_latent_prev is not None and is_best_image_updated:
-                best_sample_encoding_prev = human_encoder_trainer.model(best_sample_latent_prev)
+                best_sample_encoding_prev = human_encoder_trainer.model(best_sample_latent_prev).flatten()
                 best_to_prev_best_cossim = torch.nn.functional.cosine_similarity(best_sample_encoding, best_sample_encoding_prev, dim=0).item()
                 best_to_prev_best_cossim = (best_to_prev_best_cossim + 1) / 2
                 
@@ -321,6 +321,7 @@ def main(cfg: TrainerConfig) -> None:
             human_encodings = human_encodings.unsqueeze(0).expand(expand_dim)
             final_rewards = torch.nn.functional.cosine_similarity(human_encodings, positive_sample_encodings, dim=2).mean(0)
             final_rewards = (final_rewards+1)/2
+
 
         ### Ground truth human reward ### (for query everything)
         # final_rewards = human_rewards
