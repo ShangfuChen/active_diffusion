@@ -302,7 +302,7 @@ def main(cfg: TrainerConfig) -> None:
                 best_to_best_cossim_cur_and_prev_encoder = torch.nn.functional.cosine_similarity(best_sample_encoding, best_sample_encoding_from_prev_encoder, dim=0).item()
                 best_to_best_cossim_cur_and_prev_encoder = (best_to_best_cossim_cur_and_prev_encoder + 1) / 2
             if best_sample_latent_prev is not None and is_best_image_updated:
-                best_sample_encoding_prev = human_encoder_trainer.model(best_sample_latent_prev)
+                best_sample_encoding_prev = human_encoder_trainer.model(best_sample_latent_prev).flatten()
                 best_to_prev_best_cossim = torch.nn.functional.cosine_similarity(best_sample_encoding, best_sample_encoding_prev, dim=0).item()
                 best_to_prev_best_cossim = (best_to_prev_best_cossim + 1) / 2
                 
