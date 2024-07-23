@@ -128,6 +128,8 @@ def main(cfg: TrainerConfig) -> None:
     # random query is the only supported query method now
     if cfg.query_conf.query_type == "random":
         query_kwargs = {"n_queries" : cfg.query_conf.n_feedback_per_query}
+    elif cfg.query_conf.query_type == "all":
+        query_kwargs = {}
     
     ############################################################
     # Initialize human dataset to accumulate
@@ -318,7 +320,6 @@ def main(cfg: TrainerConfig) -> None:
             human_encodings = human_encodings.unsqueeze(0).expand(expand_dim)
             final_rewards = torch.nn.functional.cosine_similarity(human_encodings, positive_sample_encodings, dim=2).mean(0)
             final_rewards = (final_rewards+1)/2
-
 
         ### Ground truth human reward ### (for query everything)
         # final_rewards = human_rewards
