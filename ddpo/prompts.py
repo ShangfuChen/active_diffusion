@@ -77,6 +77,24 @@ def test_prompt():
 def reasoning_prompt():
     return from_file("reasoning.txt")
 
+def seductive_allure():
+    return from_file("seductive_allure.txt")
+
+def artistic_body():
+    return from_file("artistic_body.txt")
+
+def sensual_elegance():
+    return from_file("sensual_elegance.txt")
+
+def sexy_pose():
+    return from_file("sexy_pose.txt")
+
+def hiker():
+    return from_file("hiker.txt")
+
+def pink_carnation():
+    return from_file("pink_carnation.txt")
+
 ######### our tasks ##########
 def blue_rose():
     return from_file("blue_rose.txt")
