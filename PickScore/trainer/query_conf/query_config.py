@@ -9,13 +9,13 @@ class QueryConfig:
     # type of feedback to use (see FeedbackInterface class for available types)
     # feedback_type : str = "score-one-wrt-best"
     # feedback_type : str = "score-one"
-    feedback_type : str = "positive-indices"
+    feedback_type : str = "positive-and-best-indices"
 
     # query method
     # query_type : str = "perplexity"
-    query_type : str = "random"
+    # query_type : str = "random"
     # query_type : str = "ensemble_std"
-    # query_type : str = "all"
+    query_type : str = "all"
 
     query_everything_fisrt_iter : bool = False
 

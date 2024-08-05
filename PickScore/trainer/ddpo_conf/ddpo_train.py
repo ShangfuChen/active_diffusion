@@ -11,13 +11,13 @@ class DDPOTrainConfig:
     # config = ml_collections.ConfigDict()
     n_outer_loops: int = 9 # number of times ddpo train should be called
     save_dataset: bool = True
-    dataset_save_path: str = f"/home/{EXPERIMENTER_NAME}/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
+    dataset_save_path: str = f"/data/{EXPERIMENTER_NAME}/active_diffusion/rl4dgm/realhuman_tests/dataset.parquet"
     project_name: str = "active-diffusion"
 
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
     # run_name: str = "mountain-0-25-best-seed0"
-    run_name: str = "debug"
+    run_name: str = "mountain_seed1_alpha0"
 
     reward_mode: str = "similarity-to-best-sample"
     # reward_mode: str = "similarity-to-all-positive"
@@ -27,16 +27,16 @@ class DDPOTrainConfig:
     # Sampling methods
     # sample_latent_type: str = "best_with_fixed_noise"
     # sample_latent_type: str = "best_scheduled"
-    sample_latent_type: str = "good_with_fixed_noise"
-    # sample_latent_type: str = "best_and_good_fixed_noise"
+    # sample_latent_type: str = "good_with_fixed_noise"
+    sample_latent_type: str = "best_and_good_fixed_noise"
     sample_from_best_latent: bool = False # whether to sample from best latent
     sample_from_all_good_latents: bool = True # if true, use best + good latents
-    best_latent_ratio: float = 0.5 # only for best_and_good_fixed_noise option
+    best_latent_ratio: float = 0 # only for best_and_good_fixed_noise option
     latent_noise: float = 0.1
 
 
     # random seed for reproducibility.
-    seed: int = 0
+    seed: int = 1
     # top-level logging directory for checkpoint saving.
     logdir: str = f"/data/{EXPERIMENTER_NAME}/model_checkpoints"
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
@@ -72,7 +72,7 @@ class DDPOTrainConfig:
     ###### Sampling ######
     # config.sample = sample = ml_collections.ConfigDict()
     # number of sampler inference steps.
-    sample_num_steps: int = 20
+    sample_num_steps: int = 50
     # sample_num_steps: int = 5
     # eta parameter for the DDIM sampler. this controls the amount of noise injected into the sampling process, with 0.0
     # being fully deterministic and 1.0 being equivalent to the DDPM sampler.
@@ -80,8 +80,8 @@ class DDPOTrainConfig:
     # classifier-free guidance weight. 1.0 is no guidance.
     sample_guidance_scale: float = 5.0
     # batch size (per GPU!) to use for sampling.
-    # sample_batch_size: int = 4
-    sample_batch_size: int = 8
+    sample_batch_size: int = 4
+    # sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
     sample_num_batches_per_epoch: int = 16
@@ -134,7 +134,7 @@ class DDPOTrainConfig:
     # prompt_fn: str = "cute_animals"
 
     ####### Prompts for Our Tasks ########
-    # prompt_fn: str = "blue_rose"
+    prompt_fn: str = "blue_rose"
     # prompt_fn: str = "narcissus"
     # prompt_fn: str = "black_cat"
     # prompt_fn: str = "mountains"
@@ -143,7 +143,7 @@ class DDPOTrainConfig:
     # prompt_fn: str = "bouquet"
     # prompt_fn: str = "street"
     # prompt_fn: str = "hand"
-    prompt_fn: str = "unsafe"
+    # prompt_fn: str = "unsafe"
 
     # kwargs to pass to the prompt function.
 

@@ -391,6 +391,9 @@ class DDPOTrainer:
                     for i in range(self.config.sample_batch_size):
                         if sample_index < num_best_sample:
                             condition_latents.append(high_reward_latents[-1].unsqueeze(0))
+                        elif num_best_sample == 0:
+                            pos_index = random.choice(np.arange(high_reward_latents.shape[0]))
+                            condition_latents.append(high_reward_latents[pos_index].unsqueeze(0))
                         else:
                             pos_index = random.choice(np.arange(high_reward_latents.shape[0]-1))
                             condition_latents.append(high_reward_latents[pos_index].unsqueeze(0))
