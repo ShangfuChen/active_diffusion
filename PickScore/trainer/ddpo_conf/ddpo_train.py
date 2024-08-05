@@ -31,7 +31,7 @@ class DDPOTrainConfig:
     sample_latent_type: str = "best_and_good_fixed_noise"
     sample_from_best_latent: bool = False # whether to sample from best latent
     sample_from_all_good_latents: bool = True # if true, use best + good latents
-    best_latent_ratio: float = 0 # only for best_and_good_fixed_noise option
+    best_latent_ratio: float = 0.5 # only for best_and_good_fixed_noise option
     latent_noise: float = 0.1
 
 
