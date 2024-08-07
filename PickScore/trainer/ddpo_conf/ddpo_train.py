@@ -17,7 +17,7 @@ class DDPOTrainConfig:
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
     # run_name: str = "mountain-0-25-best-seed0"
-    run_name: str = "mountain_seed1_alpha0"
+    run_name: str = "blackcat_seed2"
 
     reward_mode: str = "similarity-to-best-sample"
     # reward_mode: str = "similarity-to-all-positive"
@@ -36,14 +36,14 @@ class DDPOTrainConfig:
 
 
     # random seed for reproducibility.
-    seed: int = 1
+    seed: int = 2
     # top-level logging directory for checkpoint saving.
     logdir: str = f"/data/{EXPERIMENTER_NAME}/model_checkpoints"
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
     # samples.
     num_epochs: int = 100
     # number of epochs between saving model checkpoints. deactivate by setting a negative value
-    save_freq: int = -1
+    save_freq: int = 1
     # number of checkpoints to keep before overwriting old ones.
     num_checkpoint_limit: int = 10
     # mixed precision training. options are "fp16", "bf16", and "no". half-precision speeds up training significantly.
@@ -134,9 +134,9 @@ class DDPOTrainConfig:
     # prompt_fn: str = "cute_animals"
 
     ####### Prompts for Our Tasks ########
-    prompt_fn: str = "blue_rose"
+    # prompt_fn: str = "blue_rose"
     # prompt_fn: str = "narcissus"
-    # prompt_fn: str = "black_cat"
+    prompt_fn: str = "black_cat"
     # prompt_fn: str = "mountains"
     # prompt_fn: str = "aesthetic_dog"
     # prompt_fn: str = "cyberpunk_cat"
