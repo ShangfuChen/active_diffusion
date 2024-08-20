@@ -12,7 +12,7 @@ from accelerate import Accelerator
 from accelerate.logging import get_logger
 
 
-@hydra.main(version_base=None, config_path="/home/hayano/active_diffusion/PickScore/trainer/conf", config_name="config")
+@hydra.main(version_base=None, config_path="/home/shangfu/active_diffusion/PickScore/trainer/conf", config_name="config")
 def main(cfg: TrainerConfig) -> None:
 
     logger = get_logger(__name__)

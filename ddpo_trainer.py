@@ -240,7 +240,7 @@ class DDPOTrainer:
         # NOTE: can define negative prompt here
         neg_prompt_embed = self.pipeline.text_encoder(
             self.pipeline.tokenizer(
-                [""],
+                [config.negative_prompt],
                 return_tensors="pt",
                 padding="max_length",
                 truncation=True,

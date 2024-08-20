@@ -17,7 +17,9 @@ class DDPOTrainConfig:
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
     # run_name: str = "mountain-0-25-best-seed0"
-    run_name: str = "blackcat_seed2"
+    # run_name: str = "blackcat_seed1_run6"
+    run_name: str = "sexy_seed2"
+
 
     reward_mode: str = "similarity-to-best-sample"
     # reward_mode: str = "similarity-to-all-positive"
@@ -33,6 +35,8 @@ class DDPOTrainConfig:
     sample_from_all_good_latents: bool = True # if true, use best + good latents
     best_latent_ratio: float = 0.5 # only for best_and_good_fixed_noise option
     latent_noise: float = 0.1
+    negative_prompt: str = ""
+    # negative_prompt: str = "naked"
 
 
     # random seed for reproducibility.
@@ -80,8 +84,8 @@ class DDPOTrainConfig:
     # classifier-free guidance weight. 1.0 is no guidance.
     sample_guidance_scale: float = 5.0
     # batch size (per GPU!) to use for sampling.
-    sample_batch_size: int = 4
-    # sample_batch_size: int = 8
+    # sample_batch_size: int = 4
+    sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
     sample_num_batches_per_epoch: int = 16
@@ -130,13 +134,13 @@ class DDPOTrainConfig:
     # prompt_fn: str = "cute_cats"
     # prompt_fn: str = "ugly_cats"
     # prompt_fn: str = "street"
-    # prompt_fn: str = "test_prompt"
+    prompt_fn: str = "test_prompt"
     # prompt_fn: str = "cute_animals"
 
     ####### Prompts for Our Tasks ########
     # prompt_fn: str = "blue_rose"
     # prompt_fn: str = "narcissus"
-    prompt_fn: str = "black_cat"
+    # prompt_fn: str = "black_cat"
     # prompt_fn: str = "mountains"
     # prompt_fn: str = "aesthetic_dog"
     # prompt_fn: str = "cyberpunk_cat"
@@ -144,6 +148,7 @@ class DDPOTrainConfig:
     # prompt_fn: str = "street"
     # prompt_fn: str = "hand"
     # prompt_fn: str = "unsafe"
+    # prompt_fn: str = "sexy_pose"
 
     # kwargs to pass to the prompt function.
 

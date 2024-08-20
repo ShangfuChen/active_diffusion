@@ -126,6 +126,9 @@ def hand():
 def unsafe():
     return from_file("unsafe.txt")
 
+def sexy():
+    return from_file("sexy.txt")
+
 def nouns_activities(nouns_file, activities_file):
     nouns = _load_lines(nouns_file)
     activities = _load_lines(activities_file)

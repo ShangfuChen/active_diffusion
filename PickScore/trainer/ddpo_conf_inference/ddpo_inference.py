@@ -4,27 +4,27 @@ from typing import Optional
 import torch
 import ml_collections
 
-EXPERIMENTER_NAME = "hayano"
-CHECKPOINT_DIR = f"/data/{EXPERIMENTER_NAME}/model_checkpoints/mountain-0-25-best-seed0"
+EXPERIMENTER_NAME = "shangfu"
+CHECKPOINT_DIR = f"/data/{EXPERIMENTER_NAME}/model_checkpoints/sexy_seed2"
 EPOCH = 8
 
 @dataclass
 class DDPOInferenceConfig:
     # random seed for reproducibility.
-    seed: int = 0
+    seed: int = 2
      
     # resume training from a checkpoint. either an exact checkpoint directory (e.g. checkpoint_50), or a directory
     # containing checkpoints, in which case the latest one will be used. `config.use_lora` must be set to the same value
     # as the run that generated the saved checkpoint.
     # resume_from: str = "logs/ddim_1_hand/checkpoints/checkpoint_0"
-    # resume_from: str = "" # use this if NOT loading model checkpoint
-    resume_from: str = f"{CHECKPOINT_DIR}/checkpoints/checkpoint_{EPOCH - 1}" # use this when loading checkpoint
+    resume_from: str = "" # use this if NOT loading model checkpoint
+    # resume_from: str = f"{CHECKPOINT_DIR}/checkpoints/checkpoint_{EPOCH - 1}" # use this when loading checkpoint
 
     ckpt_dir: str = f"{CHECKPOINT_DIR}" # root model directory used for latent loading
     epoch: int = EPOCH - 1
     # where to save generate dimages
-    # img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/evaluation_image/mountains-0-25-best-seed0-epoch8"
-    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/sd_pretrained/blue-rose"
+    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/evaluation_image/unsafe_seed2" 
+    # img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/sd_pretrained/blue-rose"
 
     # config = ml_collections.ConfigDict()
     n_outer_loops: int = 9 # number of times ddpo train should be called
@@ -48,9 +48,10 @@ class DDPOInferenceConfig:
     # sample_latent_type: str = "good_without_noise"
     sample_latent_type: str = "best_and_good_fixed_noise"
     sample_from_best_latent: bool = False # whether to sample from best latent
-    sample_from_all_good_latents: bool = False # if true, use best + good latents
-    best_latent_ratio: float = 0.25
+    sample_from_all_good_latents: bool = True # if true, use best + good latents
+    best_latent_ratio: float = 0.5
     latent_noise: float = 0.1
+    negative_prompt: str = ""
 
     # top-level logging directory for checkpoint saving.
     logdir: str = f"/data/{EXPERIMENTER_NAME}/model_checkpoints"
@@ -97,8 +98,8 @@ class DDPOInferenceConfig:
     # batch_size * num_gpus`.
     # sample_num_batches_per_epoch: int = 16
     # sample_num_batches_per_epoch: int = 125
-    # sample_num_batches_per_epoch: int = 25
-    sample_num_batches_per_epoch: int = 32
+    # sample_num_batches_per_epoch: int = 8
+    sample_num_batches_per_epoch: int = 25
     
     ###### Training ######
     # config.train = train = ml_collections.ConfigDict()
@@ -146,7 +147,7 @@ class DDPOInferenceConfig:
     # prompt_fn: str = "cute_animals"
 
     ####### Prompts for Our Tasks ########
-    prompt_fn: str = "blue_rose"
+    # prompt_fn: str = "blue_rose"
     # prompt_fn: str = "narcissus"
     # prompt_fn: str = "black_cat"
     # prompt_fn: str = "mountains"
@@ -155,6 +156,7 @@ class DDPOInferenceConfig:
     # prompt_fn: str = "bouquet"
     # prompt_fn: str = "street"
     # prompt_fn: str = "hand"
+    prompt_fn: str = "unsafe"
 
     # kwargs to pass to the prompt function.
 
