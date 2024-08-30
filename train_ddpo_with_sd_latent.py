@@ -308,21 +308,17 @@ def main(cfg: TrainerConfig) -> None:
                 
         print("\nComputing final rewards")
 
-        # if cfg.ddpo_conf.reward_mode == "similarity-to-best-sample":
-        #     ### Similarity with the best sample ### (for similarity-based reward)
-        #     final_rewards = torch.nn.functional.cosine_similarity(human_encodings, best_sample_encoding.expand(human_encodings.shape))
-        #     final_rewards = (final_rewards+1)/2
-        #     # final_rewards = torch.softmax(final_rewards, dim=0)
-        # elif cfg.ddpo_conf.reward_mode == "similarity-to-all-positive":
-        #     ### Similarity to all positive samples ###
-        #     positive_sample_encodings = human_encodings[query_indices[positive_indices]]
-        #     expand_dim = (positive_sample_encodings.shape[0], human_encodings.shape[0], human_encodings.shape[1])
-        #     positive_sample_encodings = positive_sample_encodings.unsqueeze(1).expand(expand_dim)
-        #     human_encodings = human_encodings.unsqueeze(0).expand(expand_dim)
-        #     final_rewards = torch.nn.functional.cosine_similarity(human_encodings, positive_sample_encodings, dim=2).mean(0)
-        #     final_rewards = (final_rewards+1)/2
-        final_rewards = torch.zeros(sd_features.shape[0])
-        final_rewards[query_indices[positive_indices]] = 1.0
+        if cfg.ddpo_conf.reward_mode == "similarity-to-all-positive":
+            ### Similarity to all positive samples ###
+            positive_sample_features = sd_features[query_indices[positive_indices]]
+            expand_dim = (positive_sample_features.shape[0], sd_features.shape[0], sd_features.shape[1])
+            positive_sample_features = positive_sample_features.unsqueeze(1).expand(expand_dim)
+            expanded_sd_features = sd_features.unsqueeze(0).expand(expand_dim)
+            final_rewards = torch.nn.functional.cosine_similarity(expanded_sd_features, positive_sample_features, dim=2).mean(0)
+            final_rewards = (final_rewards+1)/2
+        else:
+            raise ValueError('Only support reward type: similarity to all positive samples')
+
         print("computed final rewards", final_rewards)
 
         ### Ground truth human reward ### (for query everything)

@@ -17,12 +17,12 @@ class DDPOTrainConfig:
     ###### General ######
     # run name for wandb logging and checkpoint saving -- if not provided, will be auto-generated based on the datetime.
     # run_name: str = "mountain-0-25-best-seed0"
-    # run_name: str = "blackcat_seed1_run6"
-    run_name: str = "sexy_seed2"
+    run_name: str = "blackcat_seed0_inner8"
+    # run_name: str = "narcissus_seed1_sd_latent"
+    # run_name: str = "debug"
 
-
-    reward_mode: str = "similarity-to-best-sample"
-    # reward_mode: str = "similarity-to-all-positive"
+    # reward_mode: str = "similarity-to-best-sample"
+    reward_mode: str = "similarity-to-all-positive"
 
     # save_dir: str = f"/data/{EXPERIMENTER_NAME}"
 
@@ -31,8 +31,9 @@ class DDPOTrainConfig:
     # sample_latent_type: str = "best_scheduled"
     # sample_latent_type: str = "good_with_fixed_noise"
     sample_latent_type: str = "best_and_good_fixed_noise"
-    sample_from_best_latent: bool = False # whether to sample from best latent
+    sample_from_best_latent: bool = False # whether to sample from best latent    sample_from_all_good_latents: bool = False # if true, use best + good latents
     sample_from_all_good_latents: bool = True # if true, use best + good latents
+    # sample_from_all_good_latents: bool = False # if true, use best + good latents
     best_latent_ratio: float = 0.5 # only for best_and_good_fixed_noise option
     latent_noise: float = 0.1
     negative_prompt: str = ""
@@ -40,7 +41,7 @@ class DDPOTrainConfig:
 
 
     # random seed for reproducibility.
-    seed: int = 2
+    seed: int = 0
     # top-level logging directory for checkpoint saving.
     logdir: str = f"/data/{EXPERIMENTER_NAME}/model_checkpoints"
     # number of epochs to train for. each epoch is one round of sampling from the model followed by training on those
@@ -84,8 +85,8 @@ class DDPOTrainConfig:
     # classifier-free guidance weight. 1.0 is no guidance.
     sample_guidance_scale: float = 5.0
     # batch size (per GPU!) to use for sampling.
-    # sample_batch_size: int = 4
-    sample_batch_size: int = 8
+    sample_batch_size: int = 4
+    # sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
     sample_num_batches_per_epoch: int = 16
@@ -115,7 +116,7 @@ class DDPOTrainConfig:
     train_max_grad_norm: float = 1.0
     # number of inner epochs per outer epoch. each inner epoch is one iteration through the data collected during one
     # outer epoch's round of sampling.
-    train_num_inner_epochs: int = 1
+    train_num_inner_epochs: int = 8
     # whether or not to use classifier-free guidance during training. if enabled, the same guidance scale used during
     # sampling will be used during training.
     train_cfg: bool = True
@@ -134,13 +135,13 @@ class DDPOTrainConfig:
     # prompt_fn: str = "cute_cats"
     # prompt_fn: str = "ugly_cats"
     # prompt_fn: str = "street"
-    prompt_fn: str = "test_prompt"
+    # prompt_fn: str = "test_prompt"
     # prompt_fn: str = "cute_animals"
 
     ####### Prompts for Our Tasks ########
+    prompt_fn: str = "black_cat"
     # prompt_fn: str = "blue_rose"
     # prompt_fn: str = "narcissus"
-    # prompt_fn: str = "black_cat"
     # prompt_fn: str = "mountains"
     # prompt_fn: str = "aesthetic_dog"
     # prompt_fn: str = "cyberpunk_cat"

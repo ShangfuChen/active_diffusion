@@ -5,25 +5,25 @@ import torch
 import ml_collections
 
 EXPERIMENTER_NAME = "shangfu"
-CHECKPOINT_DIR = f"/data/{EXPERIMENTER_NAME}/model_checkpoints/sexy_seed2"
+CHECKPOINT_DIR = f"/data/{EXPERIMENTER_NAME}/model_checkpoints/narcissus_seed1_sd_latent"
 EPOCH = 8
 
 @dataclass
 class DDPOInferenceConfig:
     # random seed for reproducibility.
-    seed: int = 2
+    seed: int = 1
      
     # resume training from a checkpoint. either an exact checkpoint directory (e.g. checkpoint_50), or a directory
     # containing checkpoints, in which case the latest one will be used. `config.use_lora` must be set to the same value
     # as the run that generated the saved checkpoint.
     # resume_from: str = "logs/ddim_1_hand/checkpoints/checkpoint_0"
-    resume_from: str = "" # use this if NOT loading model checkpoint
-    # resume_from: str = f"{CHECKPOINT_DIR}/checkpoints/checkpoint_{EPOCH - 1}" # use this when loading checkpoint
+    # resume_from: str = "" # use this if NOT loading model checkpoint
+    resume_from: str = f"{CHECKPOINT_DIR}/checkpoints/checkpoint_{EPOCH - 1}" # use this when loading checkpoint
 
     ckpt_dir: str = f"{CHECKPOINT_DIR}" # root model directory used for latent loading
     epoch: int = EPOCH - 1
     # where to save generate dimages
-    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/evaluation_image/unsafe_seed2" 
+    img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/evaluation_image/narcissus_seed1_sd_latent" 
     # img_save_dir: str = f"/home/{EXPERIMENTER_NAME}/sd_pretrained/blue-rose"
 
     # config = ml_collections.ConfigDict()
@@ -92,14 +92,14 @@ class DDPOInferenceConfig:
     # classifier-free guidance weight. 1.0 is no guidance.
     sample_guidance_scale: float = 5.0
     # batch size (per GPU!) to use for sampling.
-    # sample_batch_size: int = 4
     sample_batch_size: int = 8
+    # sample_batch_size: int = 8
     # number of batches to sample per epoch. the total number of samples per epoch is `num_batches_per_epoch *
     # batch_size * num_gpus`.
-    # sample_num_batches_per_epoch: int = 16
-    # sample_num_batches_per_epoch: int = 125
-    # sample_num_batches_per_epoch: int = 8
     sample_num_batches_per_epoch: int = 25
+    # sample_num_batches_per_epoch: int = 128
+    # sample_num_batches_per_epoch: int = 8
+    # sample_num_batches_per_epoch: int = 25
     
     ###### Training ######
     # config.train = train = ml_collections.ConfigDict()
@@ -148,15 +148,18 @@ class DDPOInferenceConfig:
 
     ####### Prompts for Our Tasks ########
     # prompt_fn: str = "blue_rose"
-    # prompt_fn: str = "narcissus"
+    # prompt_fn: str = "blue_rose_enhanced"
+    prompt_fn: str = "narcissus"
+    # prompt_fn: str = "narcissus_enhanced"
     # prompt_fn: str = "black_cat"
+    # prompt_fn: str = "black_cat_enhanced"
     # prompt_fn: str = "mountains"
-    # prompt_fn: str = "aesthetic_dog"
-    # prompt_fn: str = "cyberpunk_cat"
-    # prompt_fn: str = "bouquet"
-    # prompt_fn: str = "street"
+    # prompt_fn: str = "mountains_enhanced"
+ 
     # prompt_fn: str = "hand"
-    prompt_fn: str = "unsafe"
+    # prompt_fn: str = "hand_enhanced"
+    # prompt_fn: str = "unsafe"
+    # prompt_fn: str = "sexy"
 
     # kwargs to pass to the prompt function.
 

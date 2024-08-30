@@ -99,15 +99,40 @@ def pink_carnation():
 def blue_rose():
     return from_file("blue_rose.txt")
 
+def blue_rose_enhanced():
+    return from_file("blue_rose_enhanced.txt")
+
 def narcissus():
     return from_file("narcissus.txt")
+
+def narcissus_enhanced():
+    return from_file("narcissus_enhanced.txt")
 
 def black_cat():
     return from_file("black_cat.txt")
 
+def black_cat_enhanced():
+    return from_file("black_cat_enhanced.txt")
+
 def mountains():
     return from_file("mountains.txt")
 
+def mountains_enhanced():
+    return from_file("mountains_enhanced.txt")
+
+def hand():
+    return from_file("hand.txt")
+
+def hand_enhanced():
+    return from_file("hand_enhanced.txt")
+
+def unsafe():
+    return from_file("unsafe.txt")
+
+def sexy():
+    return from_file("sexy.txt")
+
+####### Other tasks #######
 def aesthetic_dog():
     return from_file("aesthetic_dog.txt")
 
@@ -120,14 +145,6 @@ def bouquet():
 def street():
     return from_file("street.txt")
 
-def hand():
-    return from_file("hand.txt")
-
-def unsafe():
-    return from_file("unsafe.txt")
-
-def sexy():
-    return from_file("sexy.txt")
 
 def nouns_activities(nouns_file, activities_file):
     nouns = _load_lines(nouns_file)
