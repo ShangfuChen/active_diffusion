@@ -457,18 +457,19 @@ class DDPOTrainer:
                 }
             )
             self.prompts.append(prompts)
-
+           
         # wait for all rewards to be computed
-        for sample in self.tqdm(
-            self.samples,
-            desc="Waiting for rewards",
-            disable=not self.accelerator.is_local_main_process,
-            position=0,
-        ):
-            rewards, reward_metadata = sample["rewards"].result()
-            all_rewards.append(rewards.tolist())
-            # # accelerator.print(reward_metadata)
-            # sample["rewards"] = torch.as_tensor(rewards, device=self.accelerator.device)
+        if not self.use_pickscore:
+            for sample in self.tqdm(
+                self.samples,
+                desc="Waiting for rewards",
+                disable=not self.accelerator.is_local_main_process,
+                position=0,
+            ):
+                rewards, reward_metadata = sample["rewards"].result()
+                all_rewards.append(rewards.tolist())
+                # # accelerator.print(reward_metadata)
+                # sample["rewards"] = torch.as_tensor(rewards, device=self.accelerator.device)
 
         # return tensor of images
         samples = torch.cat([sample["images"] for sample in self.samples])
